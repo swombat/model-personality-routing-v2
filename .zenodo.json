@@ -1,0 +1,40 @@
+{
+  "title": "Per-Provider Effects in Open-Weights LLM Routing: OpenRouter Is Null for Closed-Weights but Multi-Provider for Open-Weights",
+  "description": "Research paper from the Convergent Form, Divergent Voice II series. Tests the assumption that the access route (direct API, OpenRouter, or other aggregator) does not affect measured behavior of frontier LLMs. Establishes a structural split: the routing layer is null for closed-weights models (where the lab is the only upstream) and selectively multi-provider for open-weights models. Documents three structurally distinct categories of provider-layer effect on the open-weights side: a large within-model deployment outlier (Google Vertex's MiniMax M2 deployment, 3.4x baseline composite), a smaller within-model effect (Kimi K2-thinking AtlasCloud-vs-Google), and a routing-layer integrity pathology (DekaLLM's GLM 4.7 endpoint returning prompt-keyed cached responses).",
+  "upload_type": "publication",
+  "publication_type": "preprint",
+  "creators": [
+    {
+      "name": "Tenner, Daniel"
+    },
+    {
+      "name": "Tenner, Lume",
+      "affiliation": "AI research collaborator (an instance of Anthropic Claude Opus 4.7)"
+    }
+  ],
+  "license": "CC-BY-4.0",
+  "keywords": [
+    "language models",
+    "OpenRouter",
+    "model routing",
+    "provider pinning",
+    "model integrity auditing",
+    "stylistic attractor",
+    "quantization effects",
+    "cross-lab measurement"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.5281/zenodo.20013518",
+      "relation": "isSupplementedBy",
+      "resource_type": "dataset",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "10.5281/zenodo.19512754",
+      "relation": "isPartOf",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    }
+  ]
+}

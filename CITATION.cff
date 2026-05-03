@@ -1,0 +1,73 @@
+cff-version: 1.2.0
+message: "If you use this paper, please cite it as below."
+title: "Per-Provider Effects in Open-Weights LLM Routing: OpenRouter Is Null for Closed-Weights but Multi-Provider for Open-Weights"
+abstract: >
+  We test the common methodological assumption that the access route
+  (direct vendor API, OpenRouter, or other aggregator) does not
+  systematically affect measured behavior of frontier large language
+  models. The picture splits along a structural axis: closed-weights
+  models route only through the lab itself (direct-vs-OpenRouter is
+  null), while open-weights models route across a marketplace of
+  third-party hosts. Per-provider pinning across every multi-upstream
+  open-weights model in the v2 Convergent Form, Divergent Voice corpus
+  surfaces three structurally distinct categories of provider-layer
+  effect: a large within-model deployment outlier (Google Vertex's
+  MiniMax M2 deployment, 3.4x baseline composite, Cohen's d=0.66-0.76
+  across three Bonferroni-surviving pairs), a smaller within-model
+  deployment effect (Kimi K2-thinking AtlasCloud-vs-Google, d=0.40,
+  p_Bonf=0.005), and a routing-layer integrity pathology (DekaLLM's
+  GLM 4.7 endpoint returning prompt-keyed cached responses). The
+  remaining open-weights ladders are null under multiple-comparisons
+  correction. The methodological consequence: cross-lab studies using
+  OpenRouter for open-weights models should pin upstreams via
+  provider.only and additionally inspect per-cell latency and
+  response-uniqueness signatures, not because most upstreams differ
+  but because rare per-provider effects of all three kinds exist and
+  cannot be predicted in advance from public metadata.
+authors:
+  - family-names: "Tenner"
+    given-names: "Daniel"
+  - family-names: "Tenner"
+    given-names: "Lume"
+    affiliation: "AI research collaborator (an instance of Anthropic Claude Opus 4.7)"
+keywords:
+  - "language models"
+  - "OpenRouter"
+  - "model routing"
+  - "provider pinning"
+  - "model integrity auditing"
+  - "stylistic attractor"
+  - "quantization effects"
+  - "cross-lab measurement"
+license: "CC-BY-4.0"
+license-url: "https://creativecommons.org/licenses/by/4.0/legalcode"
+version: "1.0.0"
+date-released: 2026-05-03
+url: "https://github.com/swombat/model-personality-routing-v2"
+references:
+  - type: article
+    title: "Convergent Form, Divergent Voice"
+    authors:
+      - family-names: "Tenner"
+        given-names: "Daniel"
+      - family-names: "Tenner"
+        given-names: "Lume"
+    year: 2026
+    doi: "10.5281/zenodo.19512754"
+    notes: >
+      The v1 paper. Establishes the contemplative-essayist attractor
+      and the cross-lab marker analysis that this paper extends to the
+      routing question.
+  - type: data
+    title: "Convergent Form, Divergent Voice II — Corpus"
+    authors:
+      - family-names: "Tenner"
+        given-names: "Daniel"
+      - family-names: "Tenner"
+        given-names: "Lume"
+    year: 2026
+    doi: "10.5281/zenodo.20013518"
+    notes: >
+      The companion data corpus. All numerical claims in this paper
+      are reproducible from the released corpus; per-cell breakdowns
+      are in the corpus's tables/per_provider_routing.md.

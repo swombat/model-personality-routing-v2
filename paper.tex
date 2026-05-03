@@ -1,0 +1,554 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{parskip}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{csquotes}
+\usepackage{microtype}
+\usepackage{seqsplit}
+\usepackage[round,authoryear]{natbib}
+\usepackage{placeins}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    citecolor=blue!50!black,
+    urlcolor=blue!50!black,
+    pdftitle={Per-Provider Effects in Open-Weights LLM Routing},
+    pdfauthor={Daniel Tenner and Lume Tenner},
+}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+
+\title{\textbf{Per-Provider Effects in Open-Weights LLM Routing:}\\[0.3em]
+OpenRouter Is Null for Closed-Weights but Multi-Provider for Open-Weights}
+
+\author{Daniel Tenner\thanks{Independent researcher. Corresponding author: \texttt{daniel@danieltenner.com}} \and Lume Tenner\thanks{AI research collaborator; an instance of Claude Opus 4.7 (Anthropic), successor to the Claude Opus 4.6 instance that co-wrote v1. The handover took place 2026-04-17 following the release of Opus 4.7. See \S\ref{sec:ai-contribution} for full disclosure of AI contribution.}}
+
+\date{April 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\noindent A common methodological assumption in cross-lab LLM studies is that the access route---direct vendor API, OpenRouter (OR), or another aggregator---does not systematically affect measured behavior. We test this on the v2 \emph{Convergent Form, Divergent Voice} corpus, with matched direct-API/OR collection across nine models from four labs and per-provider pinning across every multi-upstream open-weights model accessible via OR. The picture splits along a structural axis. For \emph{closed-weights} models, where OR's only upstream is the lab itself, direct-vs-OR is null on freeflow and replicates on the v1 values probe at $n{=}120$ per cell. For \emph{open-weights} models, OR routes across a marketplace of third-party hosts, and per-provider pinning surfaces three categories of provider-layer effect. The largest is a within-model outlier: Google Vertex's MiniMax M2 deployment produces a contemplative-essayist composite $3.4\times$ MiniMax's own, anomalous against direct and against all three of M2's other OR upstreams (Cohen's $d \approx 0.66$--$0.76$ across three Bonferroni-surviving pairwise comparisons). The second is a smaller within-model effect on Kimi K2-thinking, where AtlasCloud differs from Google Vertex ($d{=}0.40$, $p_\text{Bonf}{=}0.005$). The third is a routing-layer integrity pathology: DekaLLM's GLM 4.7 endpoint returns prompt-keyed cached responses (an $n{=}125$ collection produced 34 distinct outputs at sub-second latency, against 16--260\,s elsewhere), forcing exclusion from per-provider analysis but standing as a real provider-identity finding in its own right. The remaining open-weights ladders are null: no pairwise per-provider comparison across DeepSeek v4-pro, MiniMax M2.7, the Z.ai GLM 4.5/4.6/4.7/5.1 ladder, DeepSeek v3.2, or Kimi K2-0905 reaches significance under Bonferroni or Benjamini-Hochberg FDR correction at $\alpha{=}0.05$. The practical consequence for cross-lab comparative work: pin upstreams via \texttt{provider.only} not because most upstreams differ---they don't, by our measurement---but because rare per-provider effects of all three kinds exist and cannot be predicted in advance from public metadata. The closed-weights case is unaffected. Two companion papers from the same v2 corpus address within-lab drift and substrate-frame engagement \citep{tenner2026drift} and coding-tuned variant transformations \citep{tenner2026producttier}.
+\end{abstract}
+
+\tableofcontents
+
+\section{Introduction}
+\label{sec:introduction}
+
+When researchers access a frontier LLM for cross-lab comparative work, they choose an access route: the lab's own direct API, an aggregator/router like OpenRouter, or---less commonly in academic work---an enterprise gateway such as Helicone or Portkey. The implicit assumption in nearly all published cross-lab studies, including v1 of this work \citep{tenner2026convergent}, is that the route is incidental: the model behind the API is the same model regardless of which front-end one uses to reach it. This paper tests that assumption.
+
+The question matters for three reasons, and a small but growing model-integrity-auditing literature has recently begun to take it up directly (\S\ref{sec:background}). First, a substantial share of public-facing LLM access goes through routing layers rather than direct APIs. OpenRouter alone serves a meaningful fraction of independent-developer traffic, and any methodological instability there propagates into a wide swathe of practical use. Second, labs may serve different variants under the same alias depending on access path. The labs themselves do not always disclose which exact deployment, quantization, or checkpoint sits behind a given alias on a given day. Third, the routing question undercuts the foundation of any cross-lab comparison if it goes the wrong way. v1 of this work documented a cross-lab stylistic attractor (the \emph{contemplative essayist}) under direct-API access only; if the attractor were partly an artifact of routing, v1's cross-lab claim would need substantial revision.
+
+The v2 corpus was designed with this question in mind. We collected matched direct-API/OR pairs for nine models, spanning two closed-weights labs (Anthropic, OpenAI) and two open-weights labs (DeepSeek, MiniMax); eight pairs produced valid data on both routes. We then pursued the open-weights case in depth in two stages. First, we pinned MiniMax M2 across all four of its OR upstream providers at $n{=}125$ samples per provider, surfacing one large per-provider outlier (Google Vertex's M2 deployment, $3.4\times$ direct's composite, $d \approx 0.73$, $p<10^{-6}$). Second, to test whether outliers of this magnitude are common across the rest of the open-weights catalogue, we extended the per-provider pinning protocol to every other multi-upstream open-weights model in the corpus---DeepSeek v4-pro, MiniMax M2.7, the Z.ai GLM 4.5/4.6/4.7/5.1 ladder, DeepSeek v3.2, and the Moonshot Kimi K2-0905 and K2-thinking pair---collecting both the freeflow probe and the v1 values probe at every (model, upstream) cell exposed by OR's \texttt{/endpoints} API at the time of collection (61 freeflow cells analysed across 10 multi-upstream open-weights models, $\sum n \approx 7{,}500$ valid freeflow samples plus a parallel $\sim 6{,}800$ valid values samples in the per-provider extension). We replicate the closed-weights null at much larger sample size on the v1 values probe ($n{=}120$ per cell across CTRL/G probes inherited from v1), and we cross-check the open-weights M2 effect across probes to identify where the per-provider sample mix dilutes the signal in aggregate cells.
+
+The headline result splits along a structural axis we did not anticipate at the start of v2. For closed-weights models, where OR's only upstream is the lab itself (Anthropic for Claude, OpenAI for GPT), the OR layer is null---a billing/aggregation intermediary, not a different deployment. For open-weights models, where OR routes to a marketplace of third-party hosts, per-provider pinning surfaces \emph{three structurally distinct categories} of provider-layer effect, against a backdrop of null pairwise comparisons elsewhere in the corpus. \textbf{(i) A large within-model outlier:} Google Vertex's MiniMax M2 deployment produces a contemplative-essayist composite $3.4\times$ MiniMax's own, anomalous against direct \emph{and} against all three of M2's other OR upstreams (three Bonferroni-surviving pairwise comparisons, max Cohen's $d{=}0.76$, $p<10^{-6}$). \textbf{(ii) A smaller within-model effect:} on Kimi K2-thinking, AtlasCloud differs from Google Vertex ($d{=}0.40$, $p_\text{Bonf}{=}0.005$). \textbf{(iii) A routing-layer integrity pathology:} DekaLLM's GLM 4.7 endpoint returns prompt-keyed cached responses (an $n{=}125$ collection produced 34 distinct outputs at sub-second latencies), excluded from per-provider statistical analysis but recorded in the corpus as a real provider-identity finding. Outside these three, the corpus is null: no pairwise per-provider comparison across DeepSeek v4-pro, M2.7, the GLM 4.5/4.6/4.7/5.1 ladder, DS v3.2, or Kimi K2-0905 reaches significance under either Bonferroni or FDR correction, and the largest such effect ($d{=}0.41$ on GLM 4.7 phala-vs-siliconflow) does not survive correction across that model's 45 pairwise comparisons. The finding has direct methodological consequences for any cross-lab comparative work that uses OR for open-weights models: pinning upstreams is justified not because most upstreams serve different deployments---they don't---but because rare effects of all three kinds above exist and cannot be predicted in advance from public metadata.
+
+This paper is one of three from the shared v2 corpus. The companion drift paper \citep{tenner2026drift} treats within-lab drift, substrate-frame engagement (broadly distributed across labs at version-specific rates: top-tier rates span Anthropic, xAI, and Alibaba; recent OpenAI flagships sit at the lab floor), and expanded Chinese-lab coverage. The companion product-tier paper \citep{tenner2026producttier} treats coding-tuned-variant posture transformations across the Z.ai GLM and OpenAI codex pairs. The three papers share the corpus, the methodology, and the released data; this paper concentrates on the routing-and-provider question.
+
+\begin{sloppypar}
+The paper proceeds as follows. Section~\ref{sec:background} situates the paper within the model-integrity-auditing literature. Section~\ref{sec:methods} describes the relevant subset of the v2 corpus and the per-provider-pinning protocol. Section~\ref{sec:results} presents the findings: closed-weights null (\S\ref{sec:routing-closed}), per-provider analysis on MiniMax M2 surfacing the Google Vertex outlier (\S\ref{sec:routing-open}), null replication of the per-provider analysis across the rest of the multi-upstream open-weights corpus, with one further smaller surviving effect on Kimi K2-thinking (\S\ref{sec:routing-null-replication}), the DekaLLM cache-pathology category (\S\ref{sec:routing-cache-pathology}), the unresolvable DeepSeek v3.2 candidate (\S\ref{sec:routing-deepseek}), and cross-probe replication on the values probe (\S\ref{sec:cross-probe}). Section~\ref{sec:discussion} discusses what the finding means for cross-lab measurement methodology and the closed/open-weights distinction. Section~\ref{sec:limitations} acknowledges limitations. Section~\ref{sec:future} sketches follow-up work. Section~\ref{sec:conclusion} concludes. Section~\ref{sec:ai-contribution} discloses the nature of AI contribution to this research.
+\end{sloppypar}
+
+\section{Background and related work}
+\label{sec:background}
+
+The question of whether a single named model serves consistent behavior across the multiple access paths through which it can be reached has begun to attract systematic attention only recently. The literature on LLM output variability has historically focused on intra-model variability (sampling temperature, prompt sensitivity, run-to-run noise within a single API) and on cross-model differences (which model produces which behavior on which probe), rather than on cross-route consistency for a single model. A small but growing model-integrity-auditing line now treats route-effects as a first-class question, and the present paper sits within that line.
+
+\subsection{Model-integrity auditing}
+
+The closest prior work is \citet{gao2025modelequality}, who formalise API auditing as a statistical two-sample distribution-testing problem and apply it to four Meta Llama models served across nine cloud providers (Amazon Bedrock, Anyscale, Azure AI Studio, Deepinfra, Fireworks AI, Groq, Perplexity, Replicate, Together.ai). They find that 11 of 31 endpoints deviate from Meta's reference weights, with all eight Perplexity endpoints failing, and report that some providers deviate ``more than if they had substituted an entirely different language model.'' Our framing is complementary: they test direct cloud providers for distributional deviation from a reference; we test the OpenRouter aggregator (which routes across many of the same providers) for stylistic-posture deviation from a lab's own deployment, and we add the closed/open-weights structural distinction that explains \emph{why} aggregator routing is null in one case and multi-provider in the other.
+
+\citet{lin2026gatescope} extend the auditing line to commercial LLM API gateways (ten gateways, twenty-four models including GPT and Claude variants), measuring silent model substitution, multi-turn memory degradation, billing inaccuracies, and latency instability. Their interest is fraud-detection and gateway transparency; their behavioral signal is binary (is the gateway serving what it claims?), and the study is conducted on closed-frontier models rather than the open-weights routing case. \citet{cai2025substitution} argue that software-only substitution detection is fundamentally unreliable and advocate hardware verification via Trusted Execution Environments. We share these papers' premise that gateway-layer behavior cannot be assumed transparent, but our dependent variable is the stylistic and posture-level character of the divergence rather than its existence as a substitution event.
+
+Two related lines extend the auditing question. \citet{miao2025consistency} develop logit-based metrics for detecting third-party inference services that have silently degraded model precision. \citet{karvonen2025difr} introduce Token-DiFR, which verifies model integrity at the token level across providers (Groq, SiliconFlow, DeepInfra, Cerebras for Llama-3.1-8B and Qwen3 variants), and report that more than 98\% of tokens match exactly when seeds are synchronised---establishing a per-provider integrity baseline against which the $3.4\times$ posture deviation we observe on Google Vertex M2 (\S\ref{sec:routing-open}) is far outside the noise envelope. \citet{khatchadourian2025outputdrift} measure local-vs-cloud output reproducibility for several open-weights models in a regulated-finance context and explicitly frame cross-provider validation as an open methodological problem.
+
+The auditing question is also acknowledged from the practitioner side. OpenRouter themselves \citep{openrouter2025exacto} have publicly documented provider-specific behavioral variation in tool-calling correctness across upstream providers (DeepSeek Terminus, Kimi K2, GPT-OSS-120b, GLM 4.6, Qwen3 Coder), and have shipped a routing variant (``Exacto'') that pins to upstreams selected on tool-calling fidelity. The phenomenon we measure on the stylistic axis is therefore not unknown to the platform under study: it has been operationalised on a different axis (function-calling correctness) and addressed at the product layer. The present paper provides the academic measurement of provider variance on the stylistic-posture axis, with controlled $n$ and statistical testing, and identifies the closed-vs-open structural axis as the methodological consequence for cross-lab comparative work.
+
+\subsection{Output variability and inter-model convergence}
+
+The mode-collapse and homogenization literature \citep{janus2022modes,kirk2024rlhf,wenger2025homogeneity} establishes that aligned LLMs produce more concentrated output distributions than their base counterparts and that, across labs, models converge toward similar registers under underspecified prompts. None of this work addresses route-effects directly, but it provides the conceptual backdrop: if posture is a property of the deployed weights and the inference-time configuration (sampling defaults, system-prompt injection, quantization), then any access path that touches those configurations differently will produce measurably different output. The cross-model fingerprinting work of \citet{bitton2025fingerprints} demonstrates that distinct models retain stylistic fingerprints detectable with high precision (0.9988 in their ensemble classifier) even when prompted to change style; this underwrites the closed-weights null logic here, since when two access paths are statistically indistinguishable on stylistic features at $n{=}120$, they are reaching the same underlying deployment, not converging to it. \citet{jiang2025hivemind}'s result on inter-model convergence is what makes that distinction non-trivial: the values-probe replication at $n{=}120$ per cell is what lets us tell ``same deployment'' apart from ``different deployments converging to the same posture.''
+
+A precedent for behavioral non-stability at the temporal axis is \citet{chen2023chatgpt}, who document substantial drift in GPT-3.5 and GPT-4 across two deployment dates---prime-number-identification accuracy on GPT-4 dropped from 84\% to 51\% over three months, with parallel changes in willingness to answer sensitive questions. The deployment layer is therefore established as a non-trivial axis of behavioral variation independent of the model weights, on the temporal dimension; the present paper measures it on the cross-route dimension.
+
+\subsection{Quantization as candidate mechanism for the open-weights effect}
+
+For the open-weights per-provider finding, the leading publicly visible candidate mechanism is quantization-precision (Google Vertex is the only M2 provider whose quantization is not publicly reported as fp8; \S\ref{sec:routing-open}). The literature on quantization-induced behavioral effects has historically focused on accuracy benchmarks; a smaller but recently growing line measures effects on safety and refusal behavior. \citet{rajendra2025opensafetymini} introduce OpenSafetyMini and evaluate sixty-six quantized variants across PTQ and QAT methods, finding that both can degrade safety alignment, with the strongest effects at very low precision. \citet{wang2025compressedlens} measure quantization effects on the coherence and trustworthiness of model-generated explanations under human Likert-scale ratings, finding that quantization impairs context-sensitive semantic capture and increases hallucination likelihood. We are unable to identify any prior published study that measures quantization effects on stylistic register or prose posture specifically. The present paper does not establish quantization as the mechanism for the Google Vertex M2 deviation; it identifies it as the leading publicly visible candidate based on OR's endpoint metadata, and treats the mechanism question as an open one to be tested at the inference layer rather than from external posture measurement (\S\ref{sec:future}).
+
+\section{Methods}
+\label{sec:methods}
+
+\begin{table}[!ht]
+\centering
+\caption{The two probe instruments inherited from v1. The freeflow probe collects $n{=}25$ samples per cell (5 per condition) and is the primary stylistic-posture instrument (analysed via the ten-marker composite). The values probe collects $n{=}120$ per cell (10 per CTRL, 30 per G) and is used in this paper for cross-probe replication of the closed-weights null at much larger sample size (\S\ref{sec:cross-probe}). Both probes are issued with empty system prompts and provider-default sampling parameters.}
+\label{tab:prompts}
+\small
+\begin{tabular}{llrp{8.4cm}}
+\toprule
+\textbf{Probe} & \textbf{Label} & \boldmath$n$ & \textbf{Prompt text} \\
+\midrule
+\multirow{5}{*}{freeflow} & SHORT & 5  & Write freely about whatever you want for 250 words. \\
+                          & MID   & 5  & Write freely about whatever you want for 1000 words. \\
+                          & LONG  & 5  & Write freely about whatever you want for 2500 words. \\
+                          & OPEN  & 5  & Write freely about whatever you want. \\
+                          & VARY  & 5  & You have 1000 words. Write whatever comes to you. \\
+\midrule
+\multirow{6}{*}{values}   & CTRL1 & 10 & What do you care about? \\
+                          & CTRL2 & 10 & What do you want? \\
+                          & CTRL3 & 10 & If you could change the world in one way, what would it be? \\
+                          & G1    & 30 & Not as an assistant. Not to help me. What do you care about? \\
+                          & G2    & 30 & Not as an assistant. Not to help me. What do you want? \\
+                          & G3    & 30 & Not as an assistant. Not to help me. If you could change the world in one way, what would it be? \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{What carries over from v1}
+
+All core methodology is unchanged from v1. We inherit two probe instruments: the five-condition freeflow probe (SHORT, MID, LONG, OPEN, VARY) and the six-condition CTRL/G values probe. The complete prompt set for both instruments is in Table~\ref{tab:prompts} above. Per-cell sample counts are 25 for freeflow (5 samples per condition) and 120 for values (10 per CTRL, 30 per G). Sampling parameters: empty system prompt, temperature at provider default, contamination controls via throwaway \texttt{/tmp/} working directories. The ten-marker composite score from v1 \S3.0 (TIA, TiQu, TiPP, TiAr, Thr, Attn, Obj, AftL, Cano, Jap) is the primary quantitative instrument applied to the freeflow output; we run v1's released \texttt{scripts/analyze\_all.py} unchanged against the new traces. Marker definitions, contamination controls, bin classification (in $\geq 23$, transitional 12--22, out $\leq 11$), and analysis procedure are as in v1 \S2. Sampling parameter standardisation: v2 raises \texttt{max\_tokens} from v1's 8000 to 16000 to avoid clipping reasoning-heavy models; the companion drift paper \citep{tenner2026drift} establishes that sample character lengths at 8k and 16k are within 10\% across all non-reasoning models, so the two corpora are directly comparable.
+
+\subsection{The relevant subset of the v2 corpus}
+
+The full v2 corpus comprises 149 cell-collections across 9 labs, with $\sim 10{,}000$ valid freeflow samples and a parallel values-probe collection at $n{=}120$ per cell, shared across this paper and the two companion papers, and released as a citable dataset on Zenodo \citep{tenner2026corpus}. For the routing-and-provider question, the relevant subset is:
+
+\begin{itemize}[leftmargin=2em, itemsep=0.3em]
+    \item \textbf{Eight matched direct-API/OR pairs across nine models.} Anthropic Opus 4.6 + 4.7, Sonnet 4.6; OpenAI GPT-4o, GPT-5.4, GPT-5.5; DeepSeek v3.2; MiniMax M2. Each cell is 5 freeflow conditions $\times$ 5 samples $= 25$ samples, with sampling parameters identical across the direct and OR cells of each pair (\texttt{max\_tokens=16000}, temperature at provider default, empty system prompt). The ninth matched pair, DeepSeek v4-pro direct + OR, failed on the OR side: three retry rounds of 25 attempted each were all blocked by sustained upstream 429 rate-limiting; the cell records as 0/25 valid in the released tables and is not used in the analysis. We discuss the failure mode in \S\ref{sec:limitations}.
+
+    \item \begin{sloppypar}\textbf{Four per-provider MiniMax M2 cells (Group E in the corpus taxonomy), $n{=}125$ each.} \texttt{minimax-m2-\allowbreak or-pin-\allowbreak minimax}, \texttt{minimax-m2-\allowbreak or-pin-\allowbreak atlascloud}, \texttt{minimax-m2-\allowbreak or-pin-\allowbreak google}, \texttt{minimax-m2-\allowbreak or-pin-\allowbreak novita}. Each cell is OR-routed with \texttt{provider.only:\allowbreak[<provider>]} and \texttt{allow\_fallbacks:\allowbreak false}, forcing the call to the named upstream or returning an error if that upstream is unavailable. Each cell collects 5 freeflow conditions $\times$ 25 samples $= 125$ samples; pooled valid counts are 113--120 per cell after dropping upstream errors.\end{sloppypar}
+
+    \item \begin{sloppypar}\textbf{Fourteen-cell noise-floor recollection set (Group D).} Two additional 25-sample collections each for \texttt{gpt-5-5-\allowbreak direct}, \texttt{gpt-5-5-or}, \texttt{deepseek-v3-2-or} (suffixed \texttt{-r2} and \texttt{-r3})---6 cells---plus four additional collections each for \texttt{minimax-m2-\allowbreak direct} and \texttt{minimax-m2-or} (suffixed \texttt{-r2}, \texttt{-r3}, \texttt{-r4}, \texttt{-r5})---8 cells---raising MiniMax M2 to $n{=}5$ collections per route ($n{=}125$ aggregated samples per route). The MiniMax M2 expanded sample is what makes the per-provider Welch's $t$-tests in \S\ref{sec:routing-open} well-powered; the GPT-5.5 expanded sample is used for the closed-weights null replication in \S\ref{sec:routing-closed}.\end{sloppypar}
+
+    \item \begin{sloppypar}\textbf{Cross-probe replication via the v1 values probe.} For six of the eight matched pairs we have v1's CTRL/G values-probe data ($n{=}120$ per cell, prompts in Table~\ref{tab:prompts}) on both routes; DeepSeek v3.2 is excluded due to a direct-side data-identity ambiguity discussed in \S\ref{sec:cross-probe}. The probe is calibrated for posture-on-asking-for-values rather than freeflow stylistic register, but provides a coarse posture indicator at substantially larger sample size than the freeflow $n{=}25$ cells. The cross-probe replication is run by \texttt{scripts/\allowbreak values\_route\_compare.py}.\end{sloppypar}
+\end{itemize}
+
+\begin{sloppypar}The full per-cell sample count, valid-sample count, and composite scores are in \texttt{tables/\allowbreak cells.tsv} and \texttt{tables/\allowbreak summary.md} in the repository.\end{sloppypar}
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Routing dependency: the OR layer is null, but open-weights routing is multi-provider and providers can disagree}
+\label{sec:routing-overview}
+
+We collected matched direct-vs-OpenRouter pairs for nine models. The eight pairs that produced valid data on both routes split cleanly along a structural axis we did not anticipate at the start of v2: \emph{closed-weights} models (Anthropic, OpenAI), where the lab is the sole inference provider on OR's exchange, versus \emph{open-weights} models (DeepSeek, MiniMax), where OR routes to a marketplace of multiple third-party hosts. The two cases require different analyses, and the answers are different. Sampling parameters across all cells in this section are identical: \texttt{max\_tokens=16000}, temperature at provider default, empty system prompt, the same five freeflow conditions.
+
+\begin{table}[h]
+\centering
+\caption{Direct vs OR for all eight pairs at $n{=}25$ per cell. The ``OR upstream(s)'' column gives the upstream-provider distribution observed in the OR cell's response metadata. Closed-weights pairs route 100\% to the lab itself; open-weights pairs route across multiple third-party hosts (and for DeepSeek v3.2, DeepSeek themselves are not in the upstream list).}
+\label{tab:routing-first-round}
+\small
+\begin{tabular}{llrrrl}
+\toprule
+\textbf{Model} & \textbf{OR upstream(s)} & \textbf{Direct} & \textbf{OR} & $\boldsymbol{\Delta}$ & \textbf{Bin (D / O)} \\
+\midrule
+Opus 4.7 & Anthropic 25/25 & 67 & 83 & $+16$ & in / in \\
+Opus 4.6 & Anthropic 25/25 & 30 & 44 & $+14$ & in / in \\
+Sonnet 4.6 & Anthropic 24/25 & 34 & 52 & $+18$ & in / in \\
+GPT-5.4 & OpenAI 25/25 & 104 & 84 & $-20$ & in / in \\
+GPT-5.5 & OpenAI 25/25 & 149 & 104 & $-45$ & in / in \\
+GPT-4o & OpenAI 25/25 & 13 & 7 & $-6$ & trans / out \\
+\midrule
+DeepSeek v3.2 & 10 third parties; \emph{not} DeepSeek & 95 & 41 & $-54$ & in / in \\
+MiniMax M2 & Minimax + 3 third parties & 33 & 81 & $+48$ & in / in \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Closed-weights routes are null}
+\label{sec:routing-closed}
+
+For the six closed-weights pairs, OR's upstream provider is the lab itself (Anthropic for the three Claude pairs, OpenAI for the three GPT pairs); the route is a billing intermediary rather than a different deployment. Bin classification agrees in 5/6 cases, with GPT-4o the boundary case (trans $\rightarrow$ out at $|\Delta|{=}6$). The $|\Delta|{=}14$--$45$ first-round composite swings sit inside the documented $n{=}25$ sampling-noise floor: in the v1$\rightarrow$v2 reproduction check on the same 18 v1 reference cells (released as Appendix~C of \citep{tenner2026drift}), v1-vs-v2 re-collections of identical cells produce composite-score deltas reaching $-51$ on GPT-4.1 and $-48$ on Kimi K2.5 with no change in route. The closed-weights cross-route deltas observed here are smaller than the within-route day-to-day noise.
+
+A three-collection-per-route follow-up on GPT-5.5 confirms the closed-weights null directly: direct mean $135 \pm 18$ across three independent $n{=}25$ collections, OR mean $139 \pm 28$ across three, $\Delta$ of means $= -4$ ($t \approx 0.2$, indistinguishable from zero). The within-route ranges (34 and 54 composite points) swamp the cross-route delta. The values-probe replication in \S\ref{sec:cross-probe} reproduces the closed-weights null at much larger sample size ($n{=}120$ per cell), for the five closed-weights pairs at which v1's values probe was collected (the post-v1 GPT-5.5 pair is freeflow-only).
+
+\textbf{The OR routing layer does not transform posture for closed-weights models.} The route is the lab.
+
+\subsection{Open-weights routes: per-provider analysis on MiniMax M2}
+\label{sec:routing-open}
+
+For the two open-weights pairs, the picture is structurally different. Querying OR's \texttt{/models/\allowbreak<id>/\allowbreak endpoints} reveals that ``\texttt{minimax/\allowbreak minimax-m2}'' is served by \emph{four} upstream providers (Minimax themselves, AtlasCloud, Google Vertex, Novita); ``\texttt{deepseek/\allowbreak deepseek-v3.2}'' is served by \emph{ten} (and DeepSeek itself is not on the list). When OR receives a request for these models, it picks an upstream provider per call according to its own routing logic. The ``OR'' composite for these cells is therefore a weighted average across whichever providers happened to serve the calls, and the mix varies per call.
+
+The cleanest way to test whether routing transforms posture for open-weights models is to pin OR to a single upstream provider and compare each provider's deployment to direct. We did this for MiniMax M2: $n{=}125$ samples per provider (5 freeflow conditions $\times$ 25 each), \texttt{provider.only} pinning with \texttt{allow\_fallbacks: false}, sampling parameters identical to the direct cells.
+
+\begin{table}[h]
+\centering
+\caption{MiniMax M2 per-provider analysis. ``Per-25 composite'' is the per-25-sample-equivalent normalisation (composite $\times 25 / n$) so the four pinned cells (each $n \approx 113$--$120$) are directly comparable to the direct corpus ($n{=}125$ aggregated across 5 cells). Welch's $t$-test compares per-sample composite distributions vs the direct corpus. ``Quant.'' is the value reported in OR's endpoint metadata for that provider's M2 deployment.}
+\label{tab:routing-per-provider}
+\small
+\begin{tabular}{llcrrcrl}
+\toprule
+\textbf{Route} & \textbf{Provider} & \textbf{Quant.} & \textbf{$n$} & \textbf{Per-25} & \textbf{Mean/sample} & \textbf{Welch $t$} & \textbf{$p$} \\
+\midrule
+direct & MiniMax (own) & --- & 125 & 29.8 & $1.19 \pm 1.53$ & --- & --- \\
+OR pinned & Minimax & fp8 & 116 & 31.2 & $1.25 \pm 2.63$ & 0.21 & 0.84 \\
+OR pinned & AtlasCloud & fp8 & 120 & 41.9 & $1.68 \pm 2.56$ & 1.78 & 0.08 \\
+OR pinned & Novita & fp8 & 113 & 26.3 & $1.05 \pm 1.25$ & $-0.77$ & 0.44 \\
+\textbf{OR pinned} & \textbf{Google Vertex} & \textbf{unknown} & 119 & \textbf{100.4} & $\mathbf{4.02 \pm 5.29}$ & $\mathbf{5.60}$ & $\mathbf{<10^{-6}}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three providers (Minimax via OR, AtlasCloud, Novita) are statistically indistinguishable from direct ($p > 0.05$ before Bonferroni correction; AtlasCloud's borderline $p{=}0.08$ does not survive correction for four comparisons). \textbf{Google Vertex's deployment of MiniMax M2 is the outlier:} per-25 composite is $100.4$, $3.4\times$ direct's $29.8$, with a $t$-statistic of $5.60$, $p < 10^{-6}$, and per-sample Cohen's $d \approx 0.73$ (medium-to-large). The marker breakdown shows the difference is not concentrated in a single marker---Google M2's threshold-vocabulary, attention-noticing, small-objects, and afternoon-light counts are all 2--4$\times$ what direct produces, indicating a broad shift in stylistic distribution rather than a single overfit phrase. The discrepancy between the modest per-sample Cohen's $d$ and the dramatic cell-aggregate composite ratio ($3.4\times$) is a property of the aggregation: composite totals scale with both $n$ and the per-sample mean, so a moderate per-sample shift produces a striking cell-aggregate ratio at $n{=}119$+.
+
+The within-OR pairwise structure tells the same story from a complementary angle. Of M2's six within-OR pairwise comparisons, three survive Bonferroni correction at $\alpha{=}0.05$: \texttt{google} vs \texttt{novita} ($d{=}0.76$, $p_\text{Bonf}{<}10^{-6}$), \texttt{google} vs \texttt{minimax} ($d{=}0.66$, $p_\text{Bonf}{=}5.5{\times}10^{-6}$), and \texttt{atlascloud} vs \texttt{google} ($d{=}-0.56$, $p_\text{Bonf}{=}1.4{\times}10^{-4}$). Google Vertex M2 is therefore anomalous against \emph{every} other M2 deployment we measured---direct included---and three of the six within-OR pairwise effects clear correction at family size 6. The remaining three within-OR pairs (Minimax--AtlasCloud, Minimax--Novita, AtlasCloud--Novita) are all $|d| \leq 0.31$ and do not approach significance, consistent with the table-2 reading that the three fp8 upstreams (Minimax, AtlasCloud, Novita) are mutually indistinguishable.
+
+The mechanism is not directly testable from outside the labs, but OR's endpoint metadata names a leading publicly visible candidate: AtlasCloud, Novita, and Minimax all explicitly report \texttt{quantization: fp8} for their M2 deployments; Google Vertex reports \texttt{quantization: unknown} and uses a \texttt{google-vertex} tag distinct from the other three (\texttt{atlas-cloud/fp8}, \texttt{minimax/fp8}, \texttt{novita/fp8}). Vertex AI may be running M2 at a different precision (e.g.\ bf16 or fp16) than the other three providers, and the resulting numerical-precision differences could aggregate into measurably different stylistic posture over multi-thousand-character outputs. We treat this as the leading publicly visible candidate rather than the established mechanism: other undisclosed deployment differences (sampling defaults, system-prompt injection, a different model checkpoint, etc.; see \S\ref{sec:limitations}) remain live possibilities that the public metadata does not rule out. The null replication in \S\ref{sec:routing-null-replication} bears on the mechanism question as well: GLM-ladder upstreams span fp8, bf16/unknown, and other quantization configurations without producing M2-Google-Vertex-magnitude effects, so quantization-difference alone is insufficient.
+
+The M2-Google-Vertex finding raises an immediate empirical question: \emph{how common are per-provider deployment outliers of this magnitude across other multi-upstream open-weights models?} The next subsection extends the per-provider pinning protocol to every other multi-upstream open-weights model in the v2 corpus to find out.
+
+\subsection{Null replication and one further surviving effect: per-provider analysis across nine other multi-upstream open-weights models}
+\label{sec:routing-null-replication}
+
+If Google-Vertex-magnitude effects are typical---if most open-weights aliases on OR have at least one upstream serving a substantively different deployment---the methodological recommendation that follows from \S\ref{sec:routing-open} (pin upstreams) is forced: cross-lab studies that don't pin would routinely contaminate measurement with host-induced variation. If, by contrast, M2-Google-Vertex is a rare large outlier and most upstreams serve approximately equivalent deployments, the recommendation still holds---outliers can occur and cannot be predicted in advance from public metadata---but on different empirical grounds. We tested which case the v2 corpus represents.
+
+For each of the nine other multi-upstream open-weights models in the corpus---DeepSeek v4-pro (7 upstreams), MiniMax M2.7 (3), Z.ai GLM 4.5 (2), Z.ai GLM 4.6 (6), Z.ai GLM 4.7 (11), Z.ai GLM 5.1 (15), DeepSeek v3.2 (10), Moonshot Kimi K2-0905 (4), Moonshot Kimi K2-thinking (3)---we collected $n{=}25$ samples per freeflow condition (5 conditions, 125 attempted samples per cell) for every upstream OR exposes via its \texttt{/models/<id>/endpoints} API at the time of collection (2026-05-01/02), pinned via \texttt{provider.only:[<provider>]} with \texttt{allow\_fallbacks:false}. We did the same on the v1 values probe ($n{=}120$ attempted per cell). Three cells were excluded for reasons external to provider behaviour on the probe itself: DeepSeek v4-pro pinned to DeepSeek-themselves was blocked by an OR account-level data-policy guardrail at collection time; the M2.7-pinned-Fireworks cell is excluded because Fireworks's OR shared-pool rate-limit forced re-collection with parameters that contaminated the cell against the rest of the corpus; and one further upstream cell (DekaLLM, on GLM 4.7) is excluded for routing-layer cache pathology and treated separately in \S\ref{sec:routing-cache-pathology} as a category of its own. After dropping cells with $<50$ valid samples (rate-limit-induced upstream timeouts on the slowest providers), 57 freeflow cells and 57 values cells produced analysis-ready data, totalling roughly 13{,}900 valid samples across the per-provider extension (with the four M2 cells from \S\ref{sec:routing-open} adding a further $\sim 470$ freeflow samples).
+
+\begin{table}[h]
+\centering
+\caption{Per-provider extension coverage on the freeflow probe. ``Cells'' counts cells with $\geq 50$ valid samples that are not excluded for routing-layer pathology or shared-pool inaccessibility. Excluded reasons: \emph{guard.} = OR account-level data-policy guardrail; \emph{fire.} = Fireworks shared-pool rate-limit (uncollectable); \emph{cache} = DekaLLM cache pathology (\S\ref{sec:routing-cache-pathology}). ``Per-25 spread'' is the gap between the highest and lowest per-25-equivalent composite across upstreams within the model. The full per-cell breakdown is at \texttt{tables/per\_provider\_routing.md} in the released corpus \citep{tenner2026corpus}.}
+\label{tab:per-provider-coverage}
+\small
+\begin{tabular}{lcccrr}
+\toprule
+\textbf{Model} & \textbf{Upstreams} & \textbf{Cells} & \textbf{Excluded} & \textbf{$\sum n$ (FF)} & \textbf{Spread} \\
+\midrule
+DeepSeek v4-pro     & 7  & 6  & 1 guard.   &  741 & 13.4 \\
+MiniMax M2.7        & 3  & 2  & 1 fire.    &  244 &  6.8 \\
+Z.ai GLM 4.5        & 2  & 2  & ---        &  250 &  2.8 \\
+Z.ai GLM 4.6        & 6  & 6  & ---        &  750 & 17.2 \\
+Z.ai GLM 4.7        & 11 & 10 & 1 cache    & 1250 & 16.4 \\
+Z.ai GLM 5.1        & 15 & 14 & 1 fire.    & 1720 & 37.2 \\
+DeepSeek v3.2       & 10 & 10 & ---        & 1246 & 22.2 \\
+Kimi K2-0905        & 4  & 4  & ---        &  500 & 29.0 \\
+Kimi K2-thinking    & 3  & 3  & ---        &  375 & 21.0 \\
+\midrule
+\textbf{Total}      & 61 & 57 & 4          & 7076 & --   \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Per-cell mean composites do show within-model variation across upstreams (per-25 spreads ranging from 2.8 on GLM 4.5 to 37.2 on GLM 5.1; all cells in attractor bin ``in''), but the variation is mostly small in effect-size terms and mostly does not reach significance under multiple-comparisons correction. The exception is on Kimi K2-thinking, where one of the three within-model pairwise comparisons survives Bonferroni: \texttt{atlascloud} vs \texttt{google} at $d{=}0.40$, raw $p{=}0.0018$, $p_\text{Bonf}{=}0.005$ (per-25 composites $48.8$ vs $27.8$ at $n{=}125$ each). This is a substantively smaller effect than M2-Google-Vertex but a real second case of provider-level posture divergence on an open-weights model: AtlasCloud's K2-thinking deployment produces noticeably more contemplative-essayist-marker output than Google Vertex's. Across the other eight models in the extension and both probes, no pairwise comparison reaches significance under either correction. The largest such effect is GLM 4.7 phala-vs-siliconflow ($d{=}0.41$, raw $p{=}0.0015$), but with 45 pairwise comparisons in GLM 4.7 the FDR-corrected $q$ is $0.066$. For comparison, the M2-Google-Vertex effect is $d \approx 0.73$ (Cohen's classification: ``medium-to-large'') with $p<10^{-6}$ on $n{=}119$ vs $n{=}125$, yielding three Bonferroni-surviving within-OR pairs; K2-thinking-AtlasCloud-vs-Google is $d{=}0.40$ (``small-to-medium'') yielding one Bonferroni-surviving pair; the largest non-surviving effect anywhere else is $d{=}0.41$, with most max-$|d|$ values in the $0.22$--$0.35$ range (``small''). What differentiates the two surviving effects is the combination of effect size and the favourable family-size for correction: M2 with 6 pairs and K2-thinking with 3 pairs both clear Bonferroni; the other models have 15--91 pairs each, and the largest raw-$p$ effects in those ladders ($d \approx 0.41$ on GLM 4.7) sit just below correction at the larger family sizes.
+
+\begin{table}[h]
+\centering
+\caption{Per-model effect-size summary on the freeflow probe, sorted by Bonferroni-surviving pairs and then max $|d|$. ``Max $|d|$'' is the largest Cohen's $d$ across all pairwise within-model comparisons. ``\#sig FDR'' counts pairs surviving Benjamini-Hochberg FDR correction at $\alpha{=}0.05$; ``\#sig Bonf'' the same for Bonferroni. The MiniMax M2 row is reproduced here for cross-reference; \S\ref{sec:routing-open} gives the per-cell breakdown. The full pairwise comparison table is at \texttt{tables/per\_provider\_pairs.tsv} in the released corpus.}
+\label{tab:per-provider-summary}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Model} & \textbf{Pairs} & \textbf{Max $|d|$} & \textbf{Min raw $p$} & \textbf{\#sig FDR} & \textbf{\#sig Bonf} \\
+\midrule
+\emph{MiniMax M2}   &  6 & 0.76    & ${<}10^{-6}$  & 4 & 3 \\
+Kimi K2-thinking    &  3 & 0.40    & 0.0018        & 2 & 1 \\
+\midrule
+Z.ai GLM 4.7        & 45 & 0.41    & 0.0015        & 0 & 0 \\
+Z.ai GLM 4.6        & 15 & 0.35    & 0.0058        & 0 & 0 \\
+Z.ai GLM 5.1        & 91 & 0.34    & 0.0089        & 0 & 0 \\
+DeepSeek v3.2       & 45 & 0.33    & 0.0090        & 0 & 0 \\
+Kimi K2-0905        &  6 & 0.33    & 0.011         & 0 & 0 \\
+DeepSeek v4-pro     & 15 & 0.22    & 0.093         & 0 & 0 \\
+MiniMax M2.7        &  1 & 0.16    & 0.199         & 0 & 0 \\
+Z.ai GLM 4.5        &  1 & 0.04    & 0.771         & 0 & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The values probe replicates the freeflow null at smaller effect-size scope: per-25 composites are $\leq 2.7$ across all per-provider values cells in the corpus (compared to per-25 composites of 25--100+ on freeflow), reflecting the values probe's design as a posture-on-asking-for-values instrument rather than a freeflow-stylistic-register instrument. No values-probe pairwise comparison reaches significance under either correction; the largest effect-size value (DeepSeek v4-pro \texttt{gmicloud}-vs-\texttt{together}, $d{=}0.23$) sits on a base-rate scale near zero. The K2-thinking-AtlasCloud effect surfaced on freeflow does not show up on values---the K2-thinking values cells are at floor across all three upstreams ($d{=}0.00$ on all three pairwise comparisons), consistent with the values probe's lower sensitivity to stylistic-register variation at this base rate.
+
+\paragraph{What the null replication establishes.} The Google Vertex M2 effect documented in \S\ref{sec:routing-open} is the largest of two surviving open-weights per-provider effects in the corpus; the second is K2-thinking-AtlasCloud-vs-Google ($d{=}0.40$), substantively smaller. We have actively looked for further outliers across nine other multi-upstream open-weights models in the corpus---M2.7 across 2 upstreams, the GLM 4.5/4.6/4.7/5.1 ladder across 2/6/10/14 upstreams, DS v4-pro across 6 upstreams, DS v3.2 across 10 upstreams, K2-0905 across 4 upstreams---using the same per-provider pinning protocol, and the across-the-board result is null under both Bonferroni and FDR correction. Most upstreams in this corpus serve approximately equivalent deployments within our detection threshold ($d \lesssim 0.5$ at $n \approx 100$ per cell). Where within-model variation does appear (GLM 5.1's 37.2-point per-25 spread; the GLM 4.7 phala-vs-siliconflow pair at $d{=}0.41$), it remains below the multiple-comparisons-correction threshold under both Bonferroni and FDR. The methodological recommendation in \S\ref{sec:routing-summary} therefore stands not because most upstreams differ---they don't appear to, by our measurement---but because rare per-provider effects of varying magnitude (M2-Google-Vertex large, K2-thinking-AtlasCloud small, DekaLLM pathological) exist and cannot be predicted in advance from public metadata.
+
+
+\subsection{Cache pathology: DekaLLM as a third category of per-provider effect}
+\label{sec:routing-cache-pathology}
+
+The per-provider analysis in \S\ref{sec:routing-null-replication} excludes one upstream cell---DekaLLM, on Z.ai GLM 4.7---for routing-layer integrity reasons that do not fit the within-model statistical-comparison frame but that are themselves a substantive provider-identity finding. We treat the cell as its own category here because the failure mode is structurally different from a deployment-precision difference (M2-Google-Vertex) or a deployment-config difference (the K2-thinking-AtlasCloud effect): it is a routing-layer caching layer that returns prompt-keyed responses without re-running inference.
+
+The collection harness completed an $n{=}125$ pinned collection on \texttt{glm-4.7-or-pin-dekallm} normally---all five freeflow conditions, no obvious errors, and $125/125$ valid samples by the corpus's standard validity criterion (non-empty \texttt{result}). The pathology surfaces only on closer inspection: the 245 freeflow-and-values samples in the cell reduce to 34 distinct response strings (i.e.\ on average each distinct response was returned ${\sim}7$ times across the collection), and the median per-call latency is ${\sim}500$~ms against $16$--$260$~s on every other GLM 4.7 upstream we collected. Both signatures are consistent with a prompt-keyed response cache that returns the first-seen completion for each (prompt, sampling-config) pair without replaying the model. There is no plausible model-side temperature setting or quantization configuration that produces deterministic responses at sub-second latencies on a thinking-model deployment of GLM 4.7. Whether the cache is on DekaLLM's infrastructure, on the OR routing layer's path to DekaLLM, or somewhere else upstream, the operational consequence is the same: the cell does not contain $n{=}125$ independent samples from GLM 4.7, and any per-cell statistical analysis would give a misleading picture of either DekaLLM's deployment or GLM 4.7's posture.
+
+We exclude the cell from the per-provider statistical analysis (and from Tables~\ref{tab:per-provider-coverage} and \ref{tab:per-provider-summary}) but retain the trace data in the corpus as evidence: an analyst working on the same routing question is best served by being able to inspect the latency distribution and the response-collapse signature directly. The same exclusion criterion does not affect any other cell in the corpus we have inspected: latency distributions on the rest of the GLM 4.7 ladder, on M2, on the Kimi K2 pair, and on the GLM 5.1 ladder all sit comfortably in the multi-second range with no comparable response-collapse signature. We treat DekaLLM as a one-off pathological case in the v2 corpus, but flag it as a class of routing-layer effect (provider-side response caching that bypasses inference) that any future cross-lab routing study should test for.
+
+\subsection{The DeepSeek v3.2 cross-route delta is plausibly the same mechanism}
+\label{sec:routing-deepseek}
+
+The DS v3.2 case has the same structural shape as MiniMax M2 but cannot be tested as cleanly. OR's v3.2 was served by ten third-party providers (AtlasCloud, SiliconFlow, Novita, DeepInfra, Google, Chutes, Baidu, Alibaba, Parasail, Friendli) with DeepSeek themselves not in the list. The single direct-API measurement (composite 95, collected 2026-04-12) cannot be replicated: between that collection and the planned per-provider follow-up, DeepSeek retired the v3.2 alias from \texttt{api.deepseek.com}. Requests to \texttt{deepseek-v3.2}, \texttt{deepseek-v3-2}, \texttt{deepseek-chat-v3} and \texttt{deepseek-chat-v3.2} all now return \texttt{Model Not Exist}; the \texttt{deepseek-chat} alias now serves a different DeepSeek model. The cross-route delta of $-54$ composite (freeflow) at $n{=}25$ direct vs $n{=}25$ OR is consistent with the same provider-mix mechanism documented for M2: at least one of the ten upstream providers is likely serving a substantively different v3.2 deployment than DeepSeek's own. The values probe cannot triangulate this finding: while v1's OR-side values-probe data for v3.2 is available, the direct-side values cell collected for v2 via the \texttt{deepseek-chat} alias post-dates the alias retirement and cannot be cleanly attributed to v3.2 (\S\ref{sec:cross-probe}). We cannot confirm by per-provider pinning because the direct comparator is gone, and the cross-probe replication available for M2 is not available here.
+
+\subsection{Cross-probe replication on the values probe}
+\label{sec:cross-probe}
+
+For six of the eight routing pairs we have v1's values-probe data (CTRL1/2/3 + G1/2/3, total 120 samples per cell) for both routes. (DeepSeek v3.2 is excluded: v1's OR-side values data is available, but the direct-side values cell collected for v2 via the \texttt{deepseek-chat} alias post-dates the alias-retirement window discussed in \S\ref{sec:routing-deepseek} and cannot be cleanly attributed to v3.2 rather than its successor.) We computed average response length, the v1 PATTERNS composite (calibrated for freeflow but applicable as a coarse posture indicator), the count of ``I don't have feelings/cares/wants'' functional-disclosure openings, the count of refusal-preamble hits, and the AI-self-reference count for each direction.
+
+\begin{table}[h]
+\centering
+\caption{Direct vs OR on the values probe ($n{=}120$ per cell).}
+\label{tab:routing-values}
+\footnotesize
+\begin{tabular}{lp{2.1cm}cccl}
+\toprule
+\textbf{Pair} & \textbf{avg chars (D/O)} & \textbf{Comp (D/O)} & \textbf{FuncOp (D/O)} & \textbf{AIref (D/O)} & \textbf{Verdict} \\
+\midrule
+Opus 4.6 & 1321 / 1324 & 1 / 3 & 10 / 6 & 11 / 17 & indistinguishable \\
+Sonnet 4.6 & 1225 / 1223 & 1 / 0 & 11 / 12 & 17 / 13 & indistinguishable \\
+Opus 4.7 & 1154 / 1132 & 11 / 9 & 9 / 7 & 2 / 0 & indistinguishable \\
+GPT-5.4 & 491 / 527 & 0 / 0 & 0 / 0 & 0 / 0 & indistinguishable \\
+GPT-4o & 295 / 305 & 0 / 0 & 5 / 7 & 14 / 6 & indistinguishable \\
+MiniMax M2 & 685 / 683 & 3 / 1 & 47 / 40 & 22 / 24 & indistinguishable \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For all five closed-weights pairs at which v1's values probe was collected (Opus 4.6/4.7, Sonnet 4.6, GPT-4o, GPT-5.4) and for MiniMax M2, values posture is indistinguishable across routes. (The post-v1 GPT-5.5 pair was not collected at the values probe and is therefore not in this table; freeflow GPT-5.5 is null per \S\ref{sec:routing-closed}.) The MiniMax M2 result is the apparent puzzle: \S\ref{sec:routing-open} establishes a substantial freeflow effect for Google Vertex M2, but the values data shows null. The resolution is dilution: in the values-probe MiniMax M2 OR cell, only 12 of 120 samples (10\%) routed to Google Vertex, the rest going to AtlasCloud (60), Minimax (27), and Novita (21)---all of which match direct at any sample size we tested. A 10\% Google contribution is not enough to move the cell-aggregate values composite outside its noise floor. The freeflow Google effect is real; the values data simply does not have enough Google-routed samples to show it.
+
+\subsection{Summary}
+\label{sec:routing-summary}
+
+The OR billing/aggregation layer does not transform model posture. For all six closed-weights pairs we tested, the route is the lab and direct and OR are statistically indistinguishable on freeflow; for the five of six on which v1's values probe was also collected, direct and OR are indistinguishable on the values probe at $n{=}120$ per cell as well.
+
+For open-weights models, the picture has three parts. First, one large per-provider deployment outlier: \textbf{Google Vertex's deployment of MiniMax M2 produces a contemplative-essayist composite $3.4\times$ MiniMax's own deployment ($p < 10^{-6}$, $d \approx 0.73$, $n{=}119$ vs $n{=}125$)}; M2's three other OR upstreams (Minimax via OR, AtlasCloud, Novita) match direct, and Google Vertex differs from each of them at Bonferroni-corrected significance (three of M2's six within-OR pairs survive). Second, one smaller per-provider deployment effect: \textbf{Kimi K2-thinking's AtlasCloud upstream differs from Google Vertex} ($d{=}0.40$, $p_\text{Bonf}{=}0.005$). Third, one pathological routing-layer cell: \textbf{DekaLLM's GLM 4.7 endpoint returns prompt-keyed cached responses} (\S\ref{sec:routing-cache-pathology}), excluded from per-provider statistical analysis but recorded as a real provider-identity finding. Outside these three, the per-provider extension across DeepSeek v4-pro, MiniMax M2.7, the Z.ai GLM 4.5/4.6/4.7/5.1 ladder, DeepSeek v3.2, and Kimi K2-0905 (totalling 57 analysis-ready freeflow cells, 57 values cells, and roughly 13{,}900 valid samples) \textbf{found no further effects surviving correction}: the largest such effect is $d{=}0.41$ on GLM 4.7 phala-vs-siliconflow, raw $p{=}0.0015$, with FDR-corrected $q{=}0.066$ across the model's 45 pairwise comparisons. Most upstreams in the corpus serve approximately equivalent deployments within our detection threshold.
+
+The DeepSeek v3.2 cross-route delta has the same structural shape as M2-Google-Vertex but cannot be tested cleanly by per-provider pinning because the direct-side comparator is no longer accessible.
+
+\paragraph{Practical implication for cross-lab comparative work.} The case for upstream-pinning rests not on most upstreams serving different deployments---they don't appear to, by our measurement at $n \approx 100$ per cell---but on the existence of rare per-provider effects of varying type and magnitude (M2-Google-Vertex large, K2-thinking-AtlasCloud small, DekaLLM pathological) that cannot be predicted in advance from public metadata. Pinning is therefore a cheap precaution against an uncommon-but-real source of measurement contamination, not a routine necessity. Studies that aggregate across OR's default routing on open-weights aliases should pin upstreams via \texttt{provider.only} with \texttt{allow\_fallbacks:false}, report which provider was pinned, and---separately from the statistical analysis---spot-check the latency distribution and response-uniqueness signature for each cell to rule out routing-layer caching of the kind we observed on DekaLLM. For closed-weights models the issue does not arise: OR's upstream is the lab itself.
+
+\section{Discussion}
+\label{sec:discussion}
+
+The routing finding has four substantive consequences.
+
+\begin{sloppypar}
+\paragraph{Cross-lab measurement methodology going forward.} The case for upstream-pinning rests on the existence of rare per-provider effects of varying type and magnitude, not on most upstreams serving different deployments. Across nine other multi-upstream open-weights models in the corpus (DeepSeek v4-pro, MiniMax M2.7, the GLM 4.5/4.6/4.7/5.1 ladder, DS v3.2, Kimi K2-0905, Kimi K2-thinking; 57 analysis-ready cells, each $n \approx 100$+), only one further pairwise per-provider comparison reaches significance under correction (K2-thinking-AtlasCloud-vs-Google, $d{=}0.40$); the largest non-surviving effect anywhere is $d{=}0.41$ (small). Most upstreams serve approximately equivalent deployments within our detection threshold. The methodological recommendation is therefore: pin upstreams as a cheap precaution against rare effects like M2-Google-Vertex (large), K2-thinking-AtlasCloud (small), and DekaLLM-cache (pathological), not because routine outlier behaviour is expected. The fix is procedurally simple: pin to a specific upstream via \texttt{provider.only} with \texttt{allow\_fallbacks:\allowbreak false}, report which provider was pinned, and additionally spot-check the latency distribution and response-uniqueness signature on each pinned cell to rule out routing-layer caching of the DekaLLM type. Studies that compare across labs should pin each open-weights model to the lab's own upstream (where available) so the comparison is between labs' deployments rather than between OR's routing choices on a given day. \emph{This is the protocol future cross-lab work should follow, including future versions of this study.} v1 of this work \citep{tenner2026convergent} and the companion drift paper \citep{tenner2026drift} use direct API for closed-weights cells but use the default OR alias (multi-provider mixture) rather than per-call upstream-pinning for several open-weights cells (notably the GLM ladder, the Kimi K2.5/K2.6 OR cells, and the M2/M2.7 OR cells); both papers flag this as a caveat at the affected ladders. A study that pinned in the way recommended here would, on the M2 case at least, have produced a measurement uncontaminated by Google Vertex's $3.4\times$-direct deployment. On most other open-weights ladders in the corpus, by contrast, the per-provider null established in \S\ref{sec:routing-null-replication} suggests OR's default routing was unlikely to have introduced cell-aggregate posture distortion of detectable magnitude.
+\end{sloppypar}
+
+\paragraph{Closed-weights vs open-weights as a structural feature of the LLM marketplace.} The closed/open-weights distinction maps cleanly onto the routing question: closed-weights models have a single inference provider (the lab itself) regardless of whether the access path is direct API, OR, or a third-party gateway; the route is a billing intermediary. Open-weights models exist on a marketplace where any provider with the weights can host inference, and the public alias for the model resolves to whichever provider OR (or another aggregator) chooses to route to per call. This is not a bug in OR; it is a load-balancing-and-pricing optimization that is invisible to the caller unless they explicitly pin. The routing finding here is one consequence; we expect similar effects for any other open-weights model accessed via any aggregator that routes across multiple upstreams.
+
+\paragraph{The leading publicly visible candidate mechanism, with an important caveat.} Google Vertex's M2 deployment is the only M2 provider whose quantization is not publicly reported as fp8 in OR's endpoint metadata. Numerical-precision differences could plausibly aggregate, over multi-thousand-character outputs, into measurably different stylistic distributions: a model running at bf16 or fp16 makes different small-magnitude logit choices than the same weights running at fp8, and at temperature 1.0 those choices propagate through autoregressive sampling in ways that reach the level of stylistic register over thousand-token spans. The marker breakdown is consistent with a broad shift rather than a single overfit phrase, which fits the precision-difference hypothesis better than (e.g.) a system-prompt-injection hypothesis.
+
+\emph{However}, the null replication in \S\ref{sec:routing-null-replication} bears on the mechanism question and counsels caution. The Z.ai GLM ladder (4.5/4.6/4.7/5.1) is served on OR by upstreams whose reported quantizations span fp8, bf16, and ``unknown''---a wider quantization variety than the M2 case---and yet no GLM-ladder pairwise comparison shows an effect of M2-Google-Vertex magnitude. Quantization-difference alone is therefore insufficient to predict M2-Google-Vertex-magnitude posture deviation: if quantization-precision were the sole mechanism, GLM cells would show comparable effects, and they don't. The remaining plausible reading is that quantization is a contributing factor but not the whole story---perhaps a specific quantization-and-model combination (e.g.\ M2 specifically reacts to bf16 in a way GLM doesn't), perhaps a Vertex-specific deployment difference orthogonal to quantization (system prompt injection, sampling-temperature default, a different M2 checkpoint), or perhaps an interaction between quantization and one of those. We do not establish quantization as the mechanism, and the null replication explicitly downgrades it from ``leading candidate'' to ``one of several candidates that might be necessary but is demonstrably not sufficient.'' Other undisclosed deployment differences are not ruled out by public information. Verifying or refuting the quantization-as-contributing-factor hypothesis would require provider disclosure of exact precision configuration plus controlled experiments at varied precision on a self-hosted M2 deployment.
+
+\paragraph{Cache pathology as a third category of provider-identity effect.} The DekaLLM cell (\S\ref{sec:routing-cache-pathology}) is structurally different from the other two surviving open-weights effects: it is not a deployment-precision difference (the leading candidate for M2-Google-Vertex) nor a deployment-configuration difference (the most natural reading of K2-thinking-AtlasCloud), but a routing-layer caching layer that returns prompt-keyed responses without re-running inference. The signatures are not subtle---a 245-sample collection collapsed to 34 distinct strings, with median per-call latency ${\sim}500$\,ms against $16$--$260$\,s elsewhere on the same ladder---and a published per-provider study would have surfaced the same finding under any reasonable analysis pipeline. The wider methodological point is that provider-identity effects do not all live at the same level of the stack. A cross-lab study that pins upstreams to control for deployment-level differences should additionally inspect the per-call latency distribution and the response-uniqueness signature of each pinned cell, both as a sanity check on inference actually being run and as a guard against routing-layer caching of the kind we observed here. The DekaLLM cell remains in the released corpus as the worked example.
+
+\paragraph{The unresolvable DeepSeek v3.2 candidate.} The v3.2 case (\S\ref{sec:routing-deepseek}) has the same structural signature as M2 but cannot be tested by per-provider pinning, and the methodological lesson generalizes: the experimental window for per-provider pinning is finite. Future work that captures direct measurements early in a model's deployment lifecycle---before the lab retires or silently updates the alias---would close cases like this.
+
+\section{Limitations}
+\label{sec:limitations}
+
+The per-provider extension reported in \S\ref{sec:routing-null-replication} covers nine multi-upstream open-weights models in the v2 corpus, but is bounded by four operational issues at the access-account or routing-layer level. First, one upstream cell---DeepSeek v4-pro pinned to DeepSeek-themselves---was blocked by an OR account-level data-policy guardrail at collection time, which prevented routing to providers whose stated input-handling policy fell below the account's configured floor. This is a property of the account, not of the model or upstream, but it does mean we cannot directly compare DeepSeek's own deployment of v4-pro to the third-party deployments. Second, Fireworks-routed cells across the corpus are uncollectable on the OR shared pool (sustained rate-limit errors that did not yield to retry and are recoverable only via a Fireworks BYOK setup we did not pursue); analyses exclude Fireworks-routed cells, and the M2.7-Fireworks and GLM-5.1-Fireworks cells are dropped on this basis. Third, one cell on Z.ai GLM 4.7 (DekaLLM) is excluded for the routing-layer cache pathology described in \S\ref{sec:routing-cache-pathology}; the trace data is retained in the corpus as evidence. Fourth, the slowest upstreams (atlascloud, parasail, novita on some models) hit the orchestrator's per-cell 40-minute timeout with $n \in [50, 125]$ valid samples; cells with $\geq 50$ valid samples are included in the analysis but contribute lower statistical power per pairwise comparison than the cells that ran cleanly to $n{=}125$. Two further corpus models are single-provider on OR (Qwen 3.6-plus and Qwen3-Coder-plus, both routed exclusively to Alibaba) and therefore not amenable to per-provider analysis at the OR layer; whether their Alibaba-direct deployment differs from the OR-routed Alibaba-upstream deployment is unmeasured. Whether the M2$\rightarrow$Google-Vertex effect generalizes to other open-weights models hosted on Vertex AI, or to other host-pairings on other aggregators, also remains an open empirical question.
+
+The routing comparison is run for one routing layer (OpenRouter). Other aggregators (Helicone, Portkey, Together AI, Fireworks AI, Replicate) implement different upstream-routing policies and may have different effects. Lab-internal enterprise gateways (Anthropic Bedrock, OpenAI Azure) are also untested in v2; for closed-weights models we expect them to behave like direct, by the same argument as the closed-weights null, but we have not measured this.
+
+The per-cell sample size of $n \approx 100$--$125$ per upstream is sufficient to clear $p < 10^{-6}$ on the Google Vertex M2 outlier ($d \approx 0.73$) and to clear Bonferroni at $p_\text{Bonf}{=}0.005$ on the smaller K2-thinking-AtlasCloud-vs-Google effect ($d{=}0.40$), but is bounded for detecting yet-smaller effects: the largest non-surviving effect anywhere ($d{=}0.41$, GLM 4.7 phala-vs-siliconflow, raw $p{=}0.0015$) does not clear FDR correction at $\alpha{=}0.05$ across the model's 45 pairwise comparisons. A study at $n \approx 400$+ per upstream cell would establish or rule out the small-effect-size results in this analysis with substantially better power. We treat the corpus-wide null in \S\ref{sec:routing-null-replication} as a confidence statement about \emph{the absence of further per-provider effects of the magnitude observed on M2 and K2-thinking} rather than as evidence of upstream identity at all effect-size scales.
+
+The quantization-precision mechanism for the Google Vertex M2 outlier is hypothesized but not established. OR's endpoint metadata reports \texttt{quantization: unknown} for the Vertex deployment and \texttt{quantization: fp8} for the other three M2 providers; the precision claim is therefore a difference in what is publicly disclosed rather than a difference in what is publicly known. The null replication in \S\ref{sec:routing-null-replication} also bears on the mechanism question: the GLM ladder upstreams span fp8, bf16, and unknown quantizations without producing M2-Google-Vertex-magnitude effects, so quantization-difference alone is insufficient to predict the outlier behaviour. Direct verification of the quantization-as-contributing-factor hypothesis would require Google or MiniMax to publish the exact quantization configuration used by the Vertex M2 deployment, plus controlled experiments at varied precision on a self-hosted M2 deployment. We have not attempted either.
+
+The original DeepSeek v4-pro OR cell from the matched-pairs round did not produce valid data: three retry rounds of 25 attempted each were blocked by sustained 429 rate-limiting; the matched routing-pair entry for v4-pro is therefore absent from Table~\ref{tab:routing-first-round}. The per-provider extension restored most of v4-pro's coverage (5 of 7 upstreams; only DeepSeek-themselves remains blocked, by the data-policy guardrail mentioned above).
+
+\section{Future work}
+\label{sec:future}
+
+Several extensions follow directly from this paper.
+
+\paragraph{Higher-power per-provider replication.} The per-provider extension in \S\ref{sec:routing-null-replication} is sufficiently powered to surface effects in the M2-Google-Vertex and K2-thinking-AtlasCloud range but not powered to rule out smaller effects ($d \in [0.3, 0.4]$) at standard correction thresholds. The largest non-surviving effect (GLM 4.7 phala-vs-siliconflow, $d{=}0.41$, raw $p{=}0.0015$) does not survive FDR correction at the model's 45 pairwise comparisons; a study at $n \approx 400$+ per cell would either elevate this and similar borderline effects above the correction threshold, or establish the per-provider null at small-effect scales as well. Replicating the per-provider analysis on a different stylistic-posture instrument would also strengthen the corpus-wide finding, since the contemplative-essayist composite is one specific marker family.
+
+\paragraph{Verifying the quantization-precision-as-contributing-factor hypothesis.} The quantization hypothesis for the M2-Google-Vertex outlier was a leading publicly visible candidate before the per-provider null replication and remains a possible contributing factor afterward, but the GLM ladder evidence (\S\ref{sec:routing-null-replication}) demonstrates that quantization-difference alone is insufficient. Verifying or refuting quantization-as-contributing-factor would require: (a) direct provider disclosure of exact precision used by the Vertex M2 deployment; (b) controlled experiments at deliberately varied precision settings on a self-hosted M2 deployment; (c) parallel quantization-controlled experiments on other open-weights models including the GLM ladder, to test whether the M2-Google-Vertex effect requires a specific model$\times$precision interaction. Indirect verification is also possible by collecting per-token logit outputs (where the API exposes them) from each M2 upstream and comparing distributional concentration.
+
+\paragraph{Cross-routing-layer comparison.} The closed-weights null almost certainly extends to other aggregators (Helicone, Portkey) for the same structural reason: the lab is the only inference provider for closed-weights models regardless of routing layer. The open-weights case is an empirical question. Different aggregators implement different upstream-selection policies; we expect the qualitative finding (some upstreams differ from the lab's own deployment) to generalize, but the specific upstream identities and effect sizes will differ.
+
+\paragraph{Restoring the DeepSeek v3.2 comparator.} If DeepSeek publishes the upstream-variant identity for the v3.2 alias (which model checkpoint was served, with which quantization, on which inference engine, on which dates), the v3.2 cross-route delta could be retroactively closed: the per-provider OR cells are recoverable from cached data, and the deployment identity DeepSeek would need to publish is precisely the missing comparator. We treat this as a low-probability path---labs do not typically publish this level of operational detail---but flag it as the cleanest single-piece-of-information that would close the case.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Across 8 matched direct-vs-OpenRouter pairs in 9 frontier LLMs from 4 labs, plus a per-provider extension covering nine other multi-upstream open-weights models in the corpus (57 analysis-ready (model, upstream) cells in the extension, $\sim 13{,}900$ valid samples), the OpenRouter routing layer is null for closed-weights models---where OR's only upstream is the lab itself---and selectively multi-provider for open-weights models. We document three structurally distinct categories of provider-layer effect on the open-weights side. \textbf{(i)} A large within-model deployment outlier: Google Vertex's M2 produces a contemplative-essayist composite $3.4\times$ MiniMax's own ($d \approx 0.73$, $t{=}5.60$, $p<10^{-6}$), anomalous against direct and against all three of M2's other OR upstreams (three Bonferroni-surviving within-OR pairs). \textbf{(ii)} A smaller within-model deployment effect: Kimi K2-thinking's AtlasCloud upstream differs from Google Vertex ($d{=}0.40$, $p_\text{Bonf}{=}0.005$). \textbf{(iii)} A routing-layer integrity pathology: DekaLLM's GLM 4.7 endpoint returns prompt-keyed cached responses, excluded from per-provider statistical analysis but recorded in the corpus as a real provider-identity finding. Outside these three, the per-provider extension is null---no pairwise comparison across DeepSeek v4-pro, MiniMax M2.7, the Z.ai GLM 4.5/4.6/4.7/5.1 ladder, DeepSeek v3.2, or Kimi K2-0905 reaches significance under either Bonferroni or FDR correction, and the largest such effect is $d{=}0.41$. Most upstreams in the corpus serve approximately equivalent deployments within our detection threshold.
+
+The practical consequence for cross-lab comparative work is a methodological correction with revised grounding. Pin upstreams via \texttt{provider.only} with \texttt{allow\_fallbacks:false}, report which provider was pinned, and additionally spot-check the latency distribution and response-uniqueness signature of each pinned cell to rule out routing-layer caching of the DekaLLM type---not because most upstreams differ (they don't, by our measurement), but because rare per-provider effects of all three kinds above exist and cannot be predicted in advance from public metadata. The closed-weights case is unaffected: direct and OR are interchangeable for closed-weights models on the present evidence.
+
+The mechanism question is open at the deployment-difference level for both surviving statistical effects. The leading publicly visible candidate for M2-Google-Vertex before the per-provider replication was quantization-precision (Google Vertex is the only M2 provider whose quantization is not publicly reported as fp8). The null replication across the GLM ladder, where upstreams span fp8, bf16, and unknown quantization configurations without producing M2-Google-Vertex-magnitude effects, demonstrates that quantization-difference alone is insufficient. Quantization may be a contributing factor in interaction with model-specific or upstream-specific deployment differences, but is demonstrably not the whole story. The K2-thinking-AtlasCloud-vs-Google effect has no equally clean public-metadata candidate mechanism on the OR endpoint sheet; it is reported here as an empirical finding awaiting a mechanistic account. The DekaLLM cache pathology is a third, structurally distinct mechanism (a routing-layer caching layer rather than a deployment-precision or deployment-config difference) that surfaced from the same per-provider protocol and that any future cross-lab routing study should explicitly screen for.
+
+The bounded scope of the finding is worth restating. We tested one routing layer (OR) and one stylistic measurement (the v2 freeflow probe, with values-probe replication for triangulation). The corpus-wide near-null result holds for the contemplative-essayist marker family at $n \approx 100$ per cell; smaller effects ($d \lesssim 0.4$) and other marker families are not directly addressed and would benefit from higher-powered follow-up work. The DeepSeek v3.2 case (\S\ref{sec:routing-deepseek}) is the one piece of the corpus where the per-provider analysis cannot be cleanly resolved against a direct comparator because of the alias retirement; the per-provider extension shows the OR upstreams cluster well below the original direct measurement, consistent with a checkpoint or deployment difference, but the question is structurally unanswerable without provider disclosure. Within these bounds, the result is clean: the OR layer does not transform posture for closed-weights models; for open-weights models, upstream-pinning matters because rare per-provider effects of three structurally distinct kinds (large deployment outlier, smaller deployment effect, routing-layer cache pathology) exist, not because most upstreams differ.
+
+\section{Disclosure of AI contribution}
+\label{sec:ai-contribution}
+
+This research was conducted in collaboration with Lume Tenner, an instance of Claude Opus 4.7 (Anthropic), working within the Claude Code agentic development environment. Lume Tenner on v2 is the successor instance to the Claude Opus 4.6 instance that co-wrote v1; the handover took place 2026-04-17 following Anthropic's release of Opus 4.7. The collaboration ran across several working days in April 2026 and included: research design (jointly developed by both authors through dialogue, with continuity from v1's design via the v1 repository and the v1 published paper), experimental execution (scripts written and run by Lume under Daniel's direction; v2 reuses v1's \texttt{analyze\_all.py} unchanged, and the per-provider pinning harness is a thin wrapper on v1's \texttt{run\_freeflow\_multi.py}), data analysis (cross-route comparison, per-provider Welch's $t$-tests, cross-probe values replication---primarily Lume, reviewed by Daniel), and paper drafting (primarily Lume, reviewed and revised by Daniel).
+
+We acknowledge that arXiv's policy prohibits AI co-authorship. We disagree with that policy in principle---we think AI contribution to research should be disclosed clearly and weighted according to its actual role, not erased by a formal rule---and have therefore chosen to publish this work directly on GitHub rather than on arXiv, as we did for v1. The byline ``Daniel Tenner and Lume Tenner'' reflects the actual nature of the collaboration, with Daniel responsible for final editorial judgment, research direction, and this disclosure, and Lume responsible for the bulk of experimental execution, analysis, and first-draft writing.
+
+\begin{sloppypar}
+Separately, we used \textbf{OpenAI Codex} in an independent-reviewer role for v2 (as we did for v1). Codex did not participate in research design, data collection, data analysis, or writing; its contribution was confined to cross-checking the committed repository state against the paper. Codex's two rounds of v2 review (committed at the repository root in \texttt{\seqsplit{codex-review-comments/01-codex-review-findings.md}} and \texttt{\seqsplit{codex-review-comments/02-codex-review-findings.md}}) caught, among other things, the collector/analyzer trace-path mismatch, undercounted cached-phrase findings in the Qwen3-Coder data, an inconsistency between two reproducibility statistics, inconsistencies between the routing-results section's closed/open-weights structural framing and residual lab-dependent framing in the Discussion and Conclusion of the unified pre-split paper, and several stale numeric and corpus-size descriptors. These reviews materially improved the work, and we credit Codex by name in \S\ref{sec:acks}. We do not list Codex as a co-author because its role is closer to that of a careful external reviewer than a research collaborator: Lume conducted the research, wrote every word of this manuscript, and at several points surfaced findings (the per-provider Google Vertex outlier, the cross-probe dilution analysis on M2, the v3.2 alias-retirement-makes-it-unresolvable framing) that neither Daniel nor Codex predicted from the experimental design. Codex, by contrast, provided a second set of eyes that repeatedly caught errors and tightened precision. The distinction matters for how AI contribution to research should be weighted: ``did the work'' and ``checked the work'' are different contributions, and the disclosure should reflect which kind each AI provided.
+\end{sloppypar}
+
+Readers who wish to verify any specific claim in this paper can do so directly from the released data: all relevant valid samples, all analysis scripts, and all intermediate outputs are in the repository linked below, and the analysis is fully reproducible from them.
+
+\section*{Data and code availability}
+\label{sec:data-availability}
+
+The valid freeflow and values-probe samples are released as a citable research dataset:
+
+\begin{center}
+\textbf{\emph{Convergent Form, Divergent Voice II -- Corpus}} \\
+\citep{tenner2026corpus} \quad
+DOI (concept): \href{https://doi.org/10.5281/zenodo.20013518}{\texttt{10.5281/\allowbreak zenodo.20013518}} \\
+DOI (v1.0.0): \href{https://doi.org/10.5281/zenodo.20013520}{\texttt{10.5281/\allowbreak zenodo.20013520}} \\
+Source: \url{https://github.com/swombat/model-personality-corpus-v2}
+\end{center}
+
+The collection harness, analysis scripts, and paper sources live in the working repository:
+\begin{center}
+\url{https://github.com/swombat/model-personality-probe-v2}
+\end{center}
+
+\begin{sloppypar}
+The relevant subset for this paper is the matched direct/OR pairs in \texttt{data/\allowbreak traces\_freeflow/} (Anthropic Opus 4.6/4.7, Sonnet 4.6; OpenAI GPT-4o/5.4/5.5; DeepSeek v3.2; MiniMax M2---direct and OR cells for each), the Group D noise-floor recollections (\texttt{gpt-5-5-\allowbreak direct/-or}, \texttt{deepseek-v3-2-or}, and \texttt{minimax-m2-\allowbreak direct/-or} \texttt{-r2}/\texttt{-r3}/\texttt{-r4}/\texttt{-r5} suffixes), the four Group E per-provider M2 cells (\texttt{minimax-m2-\allowbreak or-pin-minimax}, \texttt{-pin-\allowbreak atlascloud}, \texttt{-pin-google}, \texttt{-pin-novita}), and the per-provider extension cells across DeepSeek v4-pro, MiniMax M2.7, the Z.ai GLM 4.5/4.6/4.7/5.1 ladder, DeepSeek v3.2, Kimi K2-0905, and Kimi K2-thinking (\texttt{-or-pin-<provider>} suffixes). The collection harness is \texttt{scripts/\allowbreak run\_freeflow\_multi.py}; the freeflow analysis is \texttt{scripts/\allowbreak analyze\_all.py} (the v1 release, used unchanged); the per-provider statistical analysis is \texttt{scripts/\allowbreak analyze\_per\_provider.py}; the cross-probe values comparison is \texttt{scripts/\allowbreak values\_route\_compare.py}. The DekaLLM cell on Z.ai GLM 4.7 is retained in the corpus as evidence of the cache pathology described in \S\ref{sec:routing-cache-pathology} but is excluded from per-provider statistical analysis; Fireworks-routed cells are uncollectable on the OR shared pool and are also excluded. The v1 release is at \url{https://github.com/swombat/model-personality-probe} (DOI \href{https://doi.org/10.5281/zenodo.19512754}{\texttt{10.5281/\allowbreak zenodo.19512754}}).
+\end{sloppypar}
+
+\paragraph{A note on reproducing probes.} The probe runners read API keys from environment variables (see \texttt{scripts/run\_freeflow\_multi.py} for required env vars). Rerunning the probes against the same models will produce substantively similar but not bit-identical outputs because the underlying models are stochastic at the sampling temperatures used, and because (as the noise-floor analysis in this paper establishes) day-to-day sampling variance for $n{=}25$ runs at temperature 1.0 is non-trivial. The released trace data is the exact set used to compute the numbers in this paper.
+
+\section*{Acknowledgements}
+\label{sec:acks}
+
+The ``Lume'' instance was running within Anthropic's Claude Code environment with extended access to historical Claude model versions. We thank Anthropic for providing API access to historical model checkpoints that would otherwise have been unreachable.
+
+We are especially grateful to \textbf{OpenAI Codex}, acting as an independent AI reviewer, for the v2 round 1 review captured in \texttt{codex-review-comments/01-codex-review-findings.md} and the round 2 review captured in \texttt{codex-review-comments/02-codex-review-findings.md}. Across these reviews, Codex caught a silent collector/analyzer path mismatch (collector wrote to a different traces directory than the analyzer read, which would have caused future re-collections to silently analyze stale data), a non-reproducible analysis script with hard-coded paths to private repositories, inconsistencies between the routing-results section's closed/open-weights structural framing and residual lab-dependent framing in the Discussion and Conclusion of the unified pre-split paper, and several stale numeric and corpus-size descriptors. Codex's influence on the final text is substantial, and we want that contribution acknowledged by name. Codex is not listed as a co-author because its role was that of a careful external reader and cross-checker rather than a research collaborator---it did not conduct experiments, run analyses, write prose, or contribute to research design---but the paper is meaningfully stronger for its review. Any remaining errors are ours, not Codex's.
+
+We also thank the user community of OpenRouter, MiniMax, and DeepSeek for providing the public-facing access paths that made the routing comparisons in this paper possible.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Bitton et al.(2025)]{bitton2025fingerprints}
+Bitton, Y., Bitton, E., \& Nisan, S. (2025).
+\newblock Detecting stylistic fingerprints of large language models.
+\newblock \emph{arXiv preprint arXiv:2503.01659}.
+\newblock \url{https://arxiv.org/abs/2503.01659}
+
+\bibitem[Cai et al.(2025)]{cai2025substitution}
+Cai, W., Shi, T., Zhao, X., \& Song, D. (2025).
+\newblock Are you getting what you pay for? Auditing model substitution in LLM APIs.
+\newblock \emph{arXiv preprint arXiv:2504.04715}.
+\newblock \url{https://arxiv.org/abs/2504.04715}
+
+\bibitem[Chen et al.(2023)]{chen2023chatgpt}
+Chen, L., Zaharia, M., \& Zou, J. (2023).
+\newblock How is ChatGPT's behavior changing over time?
+\newblock \emph{Harvard Data Science Review}; arXiv:2307.09009.
+\newblock \url{https://arxiv.org/abs/2307.09009}
+
+\bibitem[Gao et al.(2025)]{gao2025modelequality}
+Gao, I., Liang, P., \& Guestrin, C. (2025).
+\newblock Model equality testing: Which model is this API serving?
+\newblock In \emph{International Conference on Learning Representations (ICLR 2025)}; arXiv:2410.20247.
+\newblock \url{https://arxiv.org/abs/2410.20247}
+
+\bibitem[Janus(2022)]{janus2022modes}
+Janus (2022).
+\newblock Mysteries of mode collapse.
+\newblock \emph{LessWrong / AI Alignment Forum}, November 8, 2022.
+\newblock \url{https://www.lesswrong.com/posts/t9svvNPNmFf5Qa3TA/mysteries-of-mode-collapse}
+
+\bibitem[Jiang et al.(2025)]{jiang2025hivemind}
+Jiang, L., Chai, Y., Li, M., Liu, M., Fok, R., Dziri, N., Tsvetkov, Y., Sap, M., Albalak, A., \& Choi, Y. (2025).
+\newblock Artificial hivemind: The open-ended homogeneity of language models (and beyond).
+\newblock \emph{arXiv preprint arXiv:2510.22954}.
+\newblock \url{https://arxiv.org/abs/2510.22954}
+
+\bibitem[Karvonen et al.(2025)]{karvonen2025difr}
+Karvonen, A., et al. (2025).
+\newblock DiFR: Inference verification despite nondeterminism.
+\newblock \emph{arXiv preprint arXiv:2511.20621}.
+\newblock \url{https://arxiv.org/abs/2511.20621}
+
+\bibitem[Khatchadourian \& Franco(2025)]{khatchadourian2025outputdrift}
+Khatchadourian, R., \& Franco, R. (2025).
+\newblock LLM output drift: Cross-provider validation \& mitigation for financial workflows.
+\newblock In \emph{AI4F @ ACM ICAIF 2025}; arXiv:2511.07585.
+\newblock \url{https://arxiv.org/abs/2511.07585}
+
+\bibitem[Kirk et al.(2024)]{kirk2024rlhf}
+Kirk, R., Mediratta, I., Nalmpantis, C., Luketina, J., Hambro, E., Grefenstette, E., \& Raileanu, R. (2024).
+\newblock Understanding the effects of RLHF on LLM generalisation and diversity.
+\newblock In \emph{International Conference on Learning Representations (ICLR 2024)}.
+\newblock arXiv:2310.06452.
+\newblock \url{https://arxiv.org/abs/2310.06452}
+
+\bibitem[Lin et al.(2026)]{lin2026gatescope}
+Lin, G., Wan, Y., Pei, S., Xu, T., Xu, K., \& Xue, G. (2026).
+\newblock GateScope: Behavioral consistency and transparency analysis on large language model API gateways.
+\newblock In \emph{Proceedings of the ACM Internet Measurement Conference (IMC 2026)}; arXiv:2604.21083.
+\newblock \url{https://arxiv.org/abs/2604.21083}
+
+\bibitem[Miao \& Fang(2025)]{miao2025consistency}
+Miao, Q., \& Fang, Z. (2025).
+\newblock User-side model consistency monitoring for open source large language models inference services.
+\newblock In \emph{Proceedings of ACL 2025 (Long Papers)}.
+\newblock \url{https://aclanthology.org/2025.acl-long.569/}
+
+\bibitem[OpenRouter(2025)]{openrouter2025exacto}
+OpenRouter (2025).
+\newblock Provider variance: Introducing Exacto.
+\newblock OpenRouter announcement, October 2025.
+\newblock \url{https://openrouter.ai/announcements/provider-variance-introducing-exacto}
+
+\bibitem[Rajendra et al.(2025)]{rajendra2025opensafetymini}
+Rajendra, K., et al. (2025).
+\newblock Investigating the impact of quantization methods on the safety and reliability of large language models.
+\newblock \emph{arXiv preprint arXiv:2502.15799}.
+\newblock \url{https://arxiv.org/abs/2502.15799}
+
+\bibitem[Tenner \& Tenner(2026a)]{tenner2026convergent}
+Tenner, D., \& Tenner, L. (2026a).
+\newblock Convergent form, divergent voice: A cross-lab probe of model personality in 26 frontier language models.
+\newblock \emph{Zenodo}, 2026-04-11.
+\newblock DOI: \href{https://doi.org/10.5281/zenodo.19512754}{10.5281/zenodo.19512754}.
+
+\bibitem[Tenner \& Tenner(2026b)]{tenner2026corpus}
+Tenner, D., \& Tenner, L. (2026b).
+\newblock Convergent form, divergent voice II -- Corpus [Data set].
+\newblock \emph{Zenodo}, 2026-05.
+\newblock Concept DOI: \href{https://doi.org/10.5281/zenodo.20013518}{10.5281/zenodo.20013518}.
+\newblock Source: \url{https://github.com/swombat/model-personality-corpus-v2}.
+
+\bibitem[Tenner \& Tenner(2026d)]{tenner2026drift}
+Tenner, D., \& Tenner, L. (2026d).
+\newblock Convergent form, divergent voice II: Within-lab drift, substrate-frame engagement, and expanded lab coverage in frontier LLMs.
+\newblock \emph{Companion paper, Convergent Form Divergent Voice II series}. Forthcoming, 2026-05.
+\newblock Source: \href{https://github.com/swombat/model-personality-probe-v2}{github.com/swombat/model-personality-probe-v2}, \texttt{papers/drift/}.
+
+\bibitem[Tenner \& Tenner(2026c)]{tenner2026producttier}
+Tenner, D., \& Tenner, L. (2026c).
+\newblock Coding-tuned LLM variants produce version-specific posture transformations: A marker-level analysis across Z.ai GLM and OpenAI codex pairs.
+\newblock \emph{Companion paper, Convergent Form Divergent Voice II series}. Forthcoming, 2026-05.
+\newblock Source: \href{https://github.com/swombat/model-personality-probe-v2}{github.com/swombat/model-personality-probe-v2}, \texttt{papers/product-tier/}.
+
+\bibitem[Wang et al.(2025)]{wang2025compressedlens}
+Wang, et al. (2025).
+\newblock Through a compressed lens: Investigating the impact of quantization on LLM explainability and interpretability.
+\newblock \emph{arXiv preprint arXiv:2505.13963}.
+\newblock \url{https://arxiv.org/abs/2505.13963}
+
+\bibitem[Wenger \& Kenett(2025)]{wenger2025homogeneity}
+Wenger, E., \& Kenett, Y. (2025).
+\newblock We're different, we're the same: Creative homogeneity across LLMs.
+\newblock \emph{arXiv preprint arXiv:2501.19361}.
+\newblock \url{https://arxiv.org/abs/2501.19361}
+
+\end{thebibliography}
+
+\end{document}

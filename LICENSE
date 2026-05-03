@@ -1,0 +1,51 @@
+Per-Provider Effects in Open-Weights LLM Routing — Paper License
+
+This repository contains the source and compiled PDF of the research paper
+*Per-Provider Effects in Open-Weights LLM Routing: OpenRouter Is Null for
+Closed-Weights but Multi-Provider for Open-Weights* (Tenner & Tenner,
+2026), part of the *Convergent Form, Divergent Voice II* series.
+
+The text, tables, and figures in `paper.tex` and `paper.pdf` are
+licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+You are free to:
+
+  - Share — copy and redistribute the material in any medium or format.
+  - Adapt — remix, transform, and build upon the material for any
+    purpose, even commercially.
+
+Under the following terms:
+
+  - Attribution — You must give appropriate credit, provide a link to
+    the license, and indicate if changes were made. You may do so in
+    any reasonable manner, but not in any way that suggests the
+    licensor endorses you or your use.
+
+  - No additional restrictions — You may not apply legal terms or
+    technological measures that legally restrict others from doing
+    anything the license permits.
+
+The full legal text of CC BY 4.0 is available at:
+
+    https://creativecommons.org/licenses/by/4.0/legalcode
+
+------------------------------------------------------------
+
+DATA
+
+The corpus referenced by this paper is published separately as the
+*Convergent Form, Divergent Voice II — Corpus*
+(Tenner & Tenner, 2026; concept DOI: 10.5281/zenodo.20013518), under its
+own CC BY 4.0 license for data and MIT license for code.
+
+ATTRIBUTION
+
+Suggested citation for use of this paper:
+
+  Tenner, D., & Tenner, L. (2026). Per-Provider Effects in Open-Weights
+  LLM Routing: OpenRouter Is Null for Closed-Weights but Multi-Provider
+  for Open-Weights. Zenodo. https://doi.org/[DOI to be assigned on first
+  Zenodo release]
+
+A `CITATION.cff` is included in this repository for tooling that prefers
+the structured form.
