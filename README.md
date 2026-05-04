@@ -37,12 +37,19 @@ of provider-layer effect**:
    MiniMax M2 deployment produces a contemplative-essayist composite
    3.4× MiniMax's own, anomalous against direct *and* against all three
    of M2's other OR upstreams (three Bonferroni-surviving pairwise
-   comparisons, max Cohen's *d*=0.76, *p*<10⁻⁶). The leading publicly
-   visible candidate mechanism is quantization-precision: Google Vertex
-   is the only M2 provider whose quantization is not publicly reported
-   as fp8. The paper treats this as a candidate, not an established
-   mechanism; the GLM-ladder null result shows that quantization
-   difference alone is insufficient to predict an effect of this size.
+   comparisons, max Cohen's *d*=0.75, *p*<10⁻⁶). The effect replicates:
+   an eight-day within-Google recollection is statistically
+   indistinguishable from the original cell (*d*=0.15, n.s.), and a
+   same-day fresh within-OR contrast against a freshly-collected
+   `minimax`-pinned cell reproduces the headline at *d*=0.73
+   (*p*<10⁻⁷, per-25 ratio 4.2×). The leading publicly visible
+   candidate mechanism is quantization-precision: Google Vertex is the
+   only M2 provider whose quantization is not publicly reported as fp8.
+   The paper treats this as a candidate, not an established mechanism;
+   the GLM-ladder null result shows that quantization difference alone
+   is insufficient to predict an effect of this size, and the eight-day
+   stability narrows the mechanism space to *stable* configuration
+   differences (ruling out transient deployment anomalies).
 
 2. **A smaller within-model deployment effect.** On Kimi K2-thinking,
    AtlasCloud differs from Google Vertex (*d*=0.40, *p*\_Bonf=0.005).
@@ -218,6 +225,18 @@ Paper text, tables, and figures: [CC BY 4.0](https://creativecommons.org/license
 Full text: [`LICENSE`](LICENSE).
 
 ## Status
+
+**v1.1.0 (2026-05-04)** — strengthened release adding an eight-day
+within-Google replication (*d*=0.15, n.s.) and a same-day within-OR
+fresh-contrast cell (*d*=0.73, *p*<10⁻⁷) for the Google Vertex M2
+outlier. Both new cells are added to the v2 corpus (concept DOI
+[10.5281/zenodo.20013518](https://doi.org/10.5281/zenodo.20013518))
+under labels `minimax-m2-or-pin-google-r2` and
+`minimax-m2-or-pin-minimax-r2`. The replication confirms the
+headline finding at the upper end of the original *d* range and rules
+out transient deployment anomalies as a candidate mechanism (the
+underlying configuration difference is stable across the eight-day
+window).
 
 **v1.0.0 (2026-05-03)** — initial release. The paper is
 analysis-complete against the released corpus; the numerical claims

@@ -12,12 +12,14 @@ abstract: >
   open-weights model in the v2 Convergent Form, Divergent Voice corpus
   surfaces three structurally distinct categories of provider-layer
   effect: a large within-model deployment outlier (Google Vertex's
-  MiniMax M2 deployment, 3.4x baseline composite, Cohen's d=0.66-0.76
-  across three Bonferroni-surviving pairs), a smaller within-model
-  deployment effect (Kimi K2-thinking AtlasCloud-vs-Google, d=0.40,
-  p_Bonf=0.005), and a routing-layer integrity pathology (DekaLLM's
-  GLM 4.7 endpoint returning prompt-keyed cached responses). The
-  remaining open-weights ladders are null under multiple-comparisons
+  MiniMax M2 deployment, 3.4x baseline composite, Cohen's d=0.68-0.75
+  across three Bonferroni-surviving pairs; replicates eight days
+  later at within-Google d=0.15 (n.s.) and same-day fresh within-OR
+  contrast d=0.73, p<10^-7), a smaller within-model deployment effect
+  (Kimi K2-thinking AtlasCloud-vs-Google, d=0.40, p_Bonf=0.005), and
+  a routing-layer integrity pathology (DekaLLM's GLM 4.7 endpoint
+  returning prompt-keyed cached responses). The remaining
+  open-weights ladders are null under multiple-comparisons
   correction. The methodological consequence: cross-lab studies using
   OpenRouter for open-weights models should pin upstreams via
   provider.only and additionally inspect per-cell latency and
@@ -27,6 +29,7 @@ abstract: >
 authors:
   - family-names: "Tenner"
     given-names: "Daniel"
+    orcid: "https://orcid.org/0009-0007-0205-4802"
   - family-names: "Tenner"
     given-names: "Lume"
     affiliation: "AI research collaborator (an instance of Anthropic Claude Opus 4.7)"
@@ -41,8 +44,8 @@ keywords:
   - "cross-lab measurement"
 license: "CC-BY-4.0"
 license-url: "https://creativecommons.org/licenses/by/4.0/legalcode"
-version: "1.0.0"
-date-released: 2026-05-03
+version: "1.1.0"
+date-released: 2026-05-04
 url: "https://github.com/swombat/model-personality-routing-v2"
 references:
   - type: article
@@ -50,6 +53,7 @@ references:
     authors:
       - family-names: "Tenner"
         given-names: "Daniel"
+        orcid: "https://orcid.org/0009-0007-0205-4802"
       - family-names: "Tenner"
         given-names: "Lume"
     year: 2026
@@ -63,6 +67,7 @@ references:
     authors:
       - family-names: "Tenner"
         given-names: "Daniel"
+        orcid: "https://orcid.org/0009-0007-0205-4802"
       - family-names: "Tenner"
         given-names: "Lume"
     year: 2026
