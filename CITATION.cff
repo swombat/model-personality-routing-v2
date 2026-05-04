@@ -12,9 +12,11 @@ abstract: >
   open-weights model in the v2 Convergent Form, Divergent Voice corpus
   surfaces three structurally distinct categories of provider-layer
   effect: a large within-model deployment outlier (Google Vertex's
-  MiniMax M2 deployment, 3.4x baseline composite, Cohen's d=0.68-0.75
-  across three Bonferroni-surviving pairs; replicates eight days
-  later at within-Google d=0.15 (n.s.) and same-day fresh within-OR
+  MiniMax M2 deployment, 3.4x baseline composite; eight Bonferroni-
+  surviving within-OR pairs across the six-cell M2 family, exactly
+  every Google-pinned cell against every non-Google-pinned cell,
+  with |d| from 0.57 to 0.75; replicates eight days later at
+  within-Google d=0.15 (n.s.) and same-day fresh within-OR
   contrast d=0.73, p<10^-7), a smaller within-model deployment effect
   (Kimi K2-thinking AtlasCloud-vs-Google, d=0.40, p_Bonf=0.005), and
   a routing-layer integrity pathology (DekaLLM's GLM 4.7 endpoint
@@ -71,8 +73,10 @@ references:
       - family-names: "Tenner"
         given-names: "Lume"
     year: 2026
-    doi: "10.5281/zenodo.20013518"
+    doi: "10.5281/zenodo.20022111"
     notes: >
-      The companion data corpus. All numerical claims in this paper
+      The companion data corpus, v1.0.2 (this paper's reference
+      version). Concept DOI 10.5281/zenodo.20013518 resolves to the
+      latest deposited version. All numerical claims in this paper
       are reproducible from the released corpus; per-cell breakdowns
       are in the corpus's tables/per_provider_routing.md.
