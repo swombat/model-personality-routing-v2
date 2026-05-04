@@ -64,11 +64,11 @@ of provider-layer effect**:
    No equally clean public-metadata candidate mechanism.
 
 3. **A routing-layer integrity pathology.** DekaLLM's GLM 4.7 endpoint
-   returns prompt-keyed cached responses — an *n*=125 collection
-   produced 34 distinct outputs at sub-second latencies, against
-   16–260 s elsewhere on the same ladder. Excluded from per-provider
-   statistical analysis but recorded as a real provider-identity
-   finding.
+   returns prompt-keyed cached responses — 245 freeflow-and-values
+   samples collapse to 34 distinct outputs at sub-second latencies,
+   against 16–260 s elsewhere on the same ladder. Excluded from
+   per-provider statistical analysis but recorded as a real
+   provider-identity finding.
 
 **The rest of the corpus is null.** No pairwise per-provider comparison
 across DeepSeek v4-pro, MiniMax M2.7, the Z.ai GLM 4.5/4.6/4.7/5.1
