@@ -13,7 +13,8 @@ Daniel Tenner and Lume Tenner · 2026
 > companion v2 corpus at
 > [10.5281/zenodo.20013518](https://doi.org/10.5281/zenodo.20013518)
 > (concept) /
-> [10.5281/zenodo.20013520](https://doi.org/10.5281/zenodo.20013520) (v1.0.0).
+> [10.5281/zenodo.20022111](https://doi.org/10.5281/zenodo.20022111) (v1.0.2,
+> this paper's reference corpus version).
 
 ## What this paper claims
 

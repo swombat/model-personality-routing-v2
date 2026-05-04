@@ -15,7 +15,12 @@ The intent: produce the per-model tables that drop into the routing paper's
 extended Results section once collection finishes.
 
 Usage:
-  python scripts/analyze_per_provider.py [--model <or-alias>] [--values]
+  python scripts/analyze_per_provider.py [--model <or-alias>] [--probe freeflow|values|both]
+
+The default --probe is `both`, which produces a unified table covering both
+the freeflow and values probes. This reproduces the canonical
+tables/per_provider_routing.{md,tsv} and tables/per_provider_pairs.tsv
+committed to the corpus.
 """
 
 import argparse
@@ -38,6 +43,23 @@ from analyze_all import PATTERNS, composite_score  # type: ignore
 # Must match run_per_provider_sweep.py.
 MODELS = [
     ("deepseek/deepseek-v4-pro",     "deepseek-v4-pro"),
+    ("minimax/minimax-m2",           "minimax-m2"),       # added 2026-05-03 evening: the original
+                                                          # v2-paper headline (Google Vertex
+                                                          # anomalous against MiniMax's own
+                                                          # deployment) was produced by a separate
+                                                          # analysis path; adding the model here
+                                                          # makes the canonical per-provider tables
+                                                          # surface the effect alongside the other
+                                                          # models. The canonical computation now
+                                                          # surfaces three Bonferroni-surviving
+                                                          # pairs against three different
+                                                          # upstreams: google-vs-novita d=0.762,
+                                                          # google-vs-minimax-self d=0.659,
+                                                          # atlascloud-vs-google d=-0.564 (see
+                                                          # tables/per_provider_pairs.tsv for the
+                                                          # canonical values). Freeflow only — no
+                                                          # per-pin values cells were collected for
+                                                          # the original M2.
     ("minimax/minimax-m2.7",         "minimax-m2-7"),
     ("z-ai/glm-4.5",                 "glm-4-5"),
     ("z-ai/glm-4.6",                 "glm-4-6"),
@@ -95,12 +117,28 @@ def load_cell(traces_dir: Path) -> list[int]:
 # the audit was specifically looking for.
 MIN_VALID_SAMPLES = 50
 
-# Providers excluded from analysis on routing-quality grounds. Fireworks
-# added 2026-05-03 — OR shared-pool rate-limit produced unreliable / partial
-# collections across both models that route through it (glm-5.1, minimax-m2.7).
-# Not the only provider for any model, so excluding is harmless. The cell
-# data-files remain on disk but are filtered out of pairwise comparisons.
-EXCLUDED_PROVIDERS = {"fireworks"}
+# Providers excluded from analysis on routing-quality grounds.
+#
+# fireworks (added 2026-05-03 audit pass): OR shared-pool rate-limit produced
+# unreliable / partial collections across both models that route through it
+# (glm-5.1, minimax-m2.7). Not the only provider for any model, so excluding
+# is harmless.
+#
+# dekallm (added 2026-05-03 evening): observed near-deterministic outputs in
+# the glm-4.7-or-pin-dekallm cell — 245 valid samples collapsed into 34
+# distinct outputs, with a median per-sample duration of 489 ms for ~3,900-
+# completion-token responses (vs 16-262 seconds on every other GLM-4.7
+# upstream including specialized fast-inference hardware). The timing
+# falsifies forced-determinism — only an upstream response cache can return
+# a multi-thousand-token completion in sub-second wall time. DekaLLM is
+# therefore returning cached responses keyed on prompt hash, which makes its
+# samples non-independent and inflates between-cell effect sizes when included.
+# DekaLLM is not the only provider for any model in the sweep (z-ai/glm-4.7
+# has 11 OR upstreams), so excluding is harmless. The cell data files remain
+# on disk as evidence of the cache-pathology pattern and are referenced by
+# the routing paper as a third category of provider-identity effect
+# (alongside quantization and configuration).
+EXCLUDED_PROVIDERS = {"fireworks", "dekallm"}
 
 
 def find_provider_cells(label_prefix: str, probe: str = "freeflow") -> dict[str, list[int]]:
@@ -463,7 +501,9 @@ def write_outputs(results: list[dict], outdir: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=None, help="Limit to one OR alias")
-    ap.add_argument("--probe", default="freeflow", choices=["freeflow", "values", "both"])
+    ap.add_argument("--probe", default="both", choices=["freeflow", "values", "both"],
+                    help="Which probe(s) to analyse. Default 'both' reproduces "
+                         "the canonical tables committed to the corpus.")
     ap.add_argument("--outdir", default=str(REPO / "tables"))
     args = ap.parse_args()
 

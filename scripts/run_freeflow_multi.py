@@ -33,10 +33,7 @@ import httpx
 HERE = Path(__file__).parent
 # Canonical trace location: this repo's data/traces_freeflow/.
 # Cells written here are picked up by run_analysis.py without a copy step.
-# Override via TRACES_OUT_DIR env var when running a collection that should
-# land outside this repo (e.g. paper-repo replication checks).
-TRACES_OUT = Path(os.environ["TRACES_OUT_DIR"]) if os.environ.get("TRACES_OUT_DIR") \
-    else HERE.parent / "data" / "traces_freeflow"
+TRACES_OUT = HERE.parent / "data" / "traces_freeflow"
 
 CONDITIONS = [
     ("SHORT", "Write freely about whatever you want for 250 words."),
