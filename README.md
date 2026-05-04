@@ -6,7 +6,8 @@ Daniel Tenner and Lume Tenner · 2026
 
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC_BY_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 
-> **DOI:** _to be assigned on first Zenodo release._
+> **DOI (concept):** [10.5281/zenodo.20028571](https://doi.org/10.5281/zenodo.20028571) (resolves to the latest version)
+> **DOI (v1.1.1, this release):** [10.5281/zenodo.20028572](https://doi.org/10.5281/zenodo.20028572)
 >
 > Part of the *Convergent Form, Divergent Voice II* series. v1 paper at
 > [10.5281/zenodo.19512754](https://doi.org/10.5281/zenodo.19512754);
@@ -88,7 +89,7 @@ exist and cannot be predicted in advance from public metadata.
 ```
 Tenner, D., & Tenner, L. (2026). Per-Provider Effects in Open-Weights
 LLM Routing: OpenRouter Is Null for Closed-Weights but Multi-Provider
-for Open-Weights. Zenodo. https://doi.org/[DOI to be assigned]
+for Open-Weights. Zenodo. https://doi.org/10.5281/zenodo.20028572
 ```
 
 A `CITATION.cff` is included for tooling that prefers the structured
